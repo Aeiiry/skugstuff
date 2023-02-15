@@ -7,6 +7,7 @@ import os
 from asyncio.log import logger
 import math
 import re
+from unittest import result
 import pandas
 import constants as const
 
@@ -73,26 +74,32 @@ def find_move_from_name_and_character(
 
     # logger.debug(f"Searching for [{move_name}] for character [{character_name}]")
 
-    name_regex: str = rf"^{move_name}$|\n{move_name}$|^{move_name}\n|\n{move_name}\n"
+    name_regex: str = rf"^{move_name}$|^{move_name}\n|\n{move_name}$|\n{move_name}\n"
 
     # Check if the character name is the same, case insensitive
     character_check: pandas.Series[bool] = df["Character"].str.contains(
         character_name, flags=re.IGNORECASE)
 
-    # Check if the move name is in either column, case insensitive
-    move_check: pandas.Series[bool] = df[const.MOVE_NAME_COLUMN].str.contains(
-        name_regex, flags=re.IGNORECASE)
-    if not move_check.any():
-        # if the move name is not found, check the alias column
-        move_check = df["Alt Names"].str.contains(
-            name_regex, flags=re.IGNORECASE)
+    # for each of the rows that match the character name, check if the move name is the same
+    for index, row in df[character_check].iterrows():
+        # check if the move name is the same, case insensitive
+        move_check_regex: re.Match[str] | None = re.search(name_regex, row["Move Name"],
+                                                           flags=re.IGNORECASE)
+        if move_check_regex:
+            logger.debug(
+                f"Found move [{move_name}] for character [{character_name}]")
+            return df.loc[[index]]
+        else:
+            move_check_regex: re.Match[str] | None = re.search(name_regex, row["Alt Names"],
+                                                               flags=re.IGNORECASE)
+            if move_check_regex:
+                logger.debug(
+                    f"Found move [{move_name}] for character [{character_name}]")
+                return df.loc[[index]]
 
-    result: pandas.DataFrame = df[move_check & character_check]
-
-    if result.empty:
-        return pandas.DataFrame()
-    else:
-        return result
+    logger.debug(
+        f"Could not find move [{move_name}] for character [{character_name}]")
+    return pandas.DataFrame()
 
 
 def get_frame_data_for_move(move_name: str, df: pandas.DataFrame, character_name: str) -> pandas.DataFrame:
@@ -395,7 +402,7 @@ def clean_and_extract_damage(
             numhits: int = int(numhits_result.group(2))
             hitdmg: int = int(numhits_result.group(1))
             # add the damage for each hit to the move's damage list
-            for j in range(numhits):
+            for j in range(numhits):  # NOSONAR
                 move_dmg.append(hitdmg)
                 # add the damage to a temporary pandas.DataFrame
                 temp_df: pandas.DataFrame = pandas.DataFrame(
@@ -505,6 +512,8 @@ def get_damage_scaling_for_hit(hit_num: int, d: int) -> float:
 
 def get_combo_damage(combo_frame_data_df) -> int:
     # undizzy values for each hit level are 15,30,40,30,0
+    str_hitnum = "Hit Number"
+    str_scaled_dmg = "Scaled Damage"
 
     table_undizzy: pandas.DataFrame = pandas.DataFrame(
         columns=["Light", "Medium", "Heavy", "Special", "Throws+Supers"])
@@ -532,26 +541,26 @@ def get_combo_damage(combo_frame_data_df) -> int:
     for i in range(len(table_undizzy_damage)):
         if int(table_undizzy_damage.at[i, "Damage"]) > 0:
             if i == 0:
-                table_undizzy_damage.at[i, "Hit Number"] = 1
+                table_undizzy_damage.at[i, str_hitnum] = 1
             else:
-                table_undizzy_damage.at[i, "Hit Number"] = (
-                    table_undizzy_damage.at[i - 1, "Hit Number"] + 1)
+                table_undizzy_damage.at[i, str_hitnum] = (
+                    table_undizzy_damage.at[i - 1, str_hitnum] + 1)
 
     # add the damage scaling for each hit, based on the hit number column and the damage column
     table_undizzy_damage["DamageScaling"] = table_undizzy_damage.apply(
-        lambda row: get_damage_scaling_for_hit(row["Hit Number"], row["Damage"]
+        lambda row: get_damage_scaling_for_hit(row[str_hitnum], row["Damage"]
                                                ),
         axis=1)
 
     # calculate the real damage for each hit rounded down
-    table_undizzy_damage["Scaled Damage"] = table_undizzy_damage.apply(
+    table_undizzy_damage[str_scaled_dmg] = table_undizzy_damage.apply(
         lambda row: math.floor(float(row["Damage"]) * float(row["DamageScaling"])), axis=1)
     # calculate the total damage for the combo for each hit by summing all previous hits
     table_undizzy_damage["Total Damage"] = table_undizzy_damage[
-        "Scaled Damage"].cumsum()
+        str_scaled_dmg].cumsum()
     # set the hit number to the index of the row
-    table_undizzy_damage["Hit Number"] = table_undizzy_damage.index + 1
-    total_damage: int = table_undizzy_damage["Scaled Damage"].sum()
+    table_undizzy_damage[str_hitnum] = table_undizzy_damage.index + 1
+    total_damage: int = table_undizzy_damage[str_scaled_dmg].sum()
     total_damage_for_moves(table_undizzy_damage)
     logger.info(table_undizzy_damage)
     return total_damage
@@ -559,8 +568,10 @@ def get_combo_damage(combo_frame_data_df) -> int:
 
 def total_damage_for_moves(
         damage_undizzy_table: pandas.DataFrame) -> pandas.DataFrame:
+
+    str_total_dmg_for_move = "Total Damage for Move"
     # add a new column to the df to store the total damage for each move
-    damage_undizzy_table.at[:, "Total Damage For Move"] = 0
+    damage_undizzy_table.at[:, str_total_dmg_for_move] = 0
     move_damage: int = 0
     # loop through each row in the df
     for hit in range(len(damage_undizzy_table)):
@@ -576,7 +587,7 @@ def total_damage_for_moves(
                 move_name != damage_undizzy_table.at[hit + 1, const.MOVE_NAME_COLUMN]):
 
             # add the total damage for the move to the damageAndUndizzyTable at the location of the first hit of the move
-            damage_undizzy_table.at[hit, "Total Damage For Move"] = move_damage
+            damage_undizzy_table.at[hit, str_total_dmg_for_move] = move_damage
 
             # reset the total damage and hits for the move
             move_damage = 0
@@ -584,16 +595,16 @@ def total_damage_for_moves(
         # if it's the last row, add the total damage and hits for the last move to table
         elif hit == len(damage_undizzy_table) - 1:
             # add the total damage and hits for the last move to table
-            damage_undizzy_table.at[hit, "Total Damage For Move"] = move_damage
+            damage_undizzy_table.at[hit, str_total_dmg_for_move] = move_damage
 
     return damage_undizzy_table
 
 
 def skombo() -> None:
-    csv_list = get_csv_list("data\combo_csvs")
+    csv_list = get_csv_list("data\\combo_csvs")
 
     logging.basicConfig(stream=sys.stdout,
-                        level=logging.WARNING,
+                        level=logging.DEBUG,
                         format="%(message)s")
 
     for csv in csv_list:
@@ -606,6 +617,7 @@ def skombo() -> None:
         # Set some constants
         character_name: str = get_first_value_from_df(
             combo_input_df, "Character")
+        print(f"===========\nCharacter: {character_name}\n")
 
         move_column_name: str = const.MOVE_NAME_COLUMN
 
