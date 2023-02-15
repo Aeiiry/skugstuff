@@ -1,31 +1,28 @@
 
-from asyncio.log import logger
-import math
-from os import stat
-from random import choice
-import re
-from shutil import move
-import pandas
-import inspect
-import numpy
-import re as regex
 import logging
 import sys
 import typing
+import os
 
-logging.basicConfig(stream=sys.stdout,
-                    level=logging.DEBUG,
-                    format="%(message)s")
+from asyncio.log import logger
+import math
+import re
+import pandas
+import constants as const
+
+print(os.path.abspath('.'))
+
+move_name_alias_df: pandas.DataFrame = pandas.read_csv(
+    "data/moveNameAliases.csv")
+
+full_framedata_df: pandas.DataFrame = pandas.read_csv("data/fullFrameData.csv")
+
+# For testing the damage calc in this stage, I want to check against a folder full of csvs
 
 
-comboInputDf: pandas.DataFrame = pandas.read_csv("data/testcombo1.csv")
-
-logger.debug(f"Combo input CSV:\n{comboInputDf}\n")
-
-character_reference_df: pandas.DataFrame = pandas.read_csv(
-    "data/characters.csv")
-move_name_alias_df: pandas.DataFrame = pandas.read_csv("data/alias.csv")
-full_framedata_df: pandas.DataFrame = pandas.read_csv("data/frameData.csv")
+def get_csv_list(path: str) -> list[str]:
+    """Returns a list of all csv files in a given path with their relative path"""
+    return [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".csv")]
 
 
 def create_df_copy_columns(df: pandas.DataFrame) -> pandas.DataFrame:
@@ -34,33 +31,15 @@ def create_df_copy_columns(df: pandas.DataFrame) -> pandas.DataFrame:
     return copy_df
 
 
-def get_character_name() -> str:
-    return comboInputDf.iloc[0]["Character"]
+def get_first_value_from_df(df: pandas.DataFrame, key: str) -> typing.Any:
+    """Gets the first value from a dataframe for a given key"""
+    return df.iloc[0][key]
 
-
-# get the expected damage for the combo, first value in the third column of the combo csv
-def get_expected_damage() -> int:
-    return comboInputDf.iloc[0]["Expected Damage"]
-
-
-expected_damage: int = get_expected_damage()
-
-# Set some constants
-character_name: str = get_character_name()
-move_column_name: str = "Move Name"
 
 # Set the character column in the comboDf to the character name
-
-
 def set_column_value(df: pandas.DataFrame, column: str, value: str) -> None:
     logger.debug(f"Setting {column} to {value}")
     df[column] = value
-
-
-# Create an empty dataframe to hold the combo data
-# Uses the same columns as tempFrameData
-combo_framedata_df: pandas.DataFrame = create_df_copy_columns(
-    full_framedata_df)
 
 
 def split_columns(df: pandas.DataFrame, column_name,
@@ -70,22 +49,13 @@ def split_columns(df: pandas.DataFrame, column_name,
     logger.debug(f'Splitting {column_name} on "{seperator}"')
     splitdf[column_name] = splitdf[column_name].str.split(seperator)
     # explode the column so that each value is on a row
-    splitdf: pandas.DataFrame = splitdf.explode(column_name)
+    splitdf = splitdf.explode(column_name)
     return splitdf
 
 
 def concatenate_dataframes(df, inputdf) -> pandas.DataFrame:
     # Concatenates two dataframes
     return pandas.concat([df, inputdf], ignore_index=True)
-
-
-combo_framedata_df = concatenate_dataframes(
-    combo_framedata_df, split_columns(comboInputDf, move_column_name, " "))
-
-# Set the character column in the comboDf to the character name
-set_column_value(combo_framedata_df, "Character", character_name)
-
-logger.debug(f"Combo dataframe:\n{combo_framedata_df}\n")
 
 
 def find_move_from_name_and_character(
@@ -110,11 +80,11 @@ def find_move_from_name_and_character(
         character_name, flags=re.IGNORECASE)
 
     # Check if the move name is in either column, case insensitive
-    move_check: pandas.Series[bool] = df["Move Name"].str.contains(
+    move_check: pandas.Series[bool] = df[const.MOVE_NAME_COLUMN].str.contains(
         name_regex, flags=re.IGNORECASE)
     if not move_check.any():
         # if the move name is not found, check the alias column
-        move_check: pandas.Series[bool] = df["Alt Names"].str.contains(
+        move_check = df["Alt Names"].str.contains(
             name_regex, flags=re.IGNORECASE)
 
     result: pandas.DataFrame = df[move_check & character_check]
@@ -125,7 +95,7 @@ def find_move_from_name_and_character(
         return result
 
 
-def get_frame_data_for_move(move_name: str, df: pandas.DataFrame) -> pandas.DataFrame:
+def get_frame_data_for_move(move_name: str, df: pandas.DataFrame, character_name: str) -> pandas.DataFrame:
     # Get the frame data for a single move, given a move name and a dataframe
 
     logger.debug(
@@ -143,9 +113,9 @@ def get_frame_data_for_move(move_name: str, df: pandas.DataFrame) -> pandas.Data
 
         # get the frame data for the follow-up move
         data_to_add, move_name = find_base_move_data_for_followup_move(
-            move_name, df, follow_up_move_search)
+            move_name, df, follow_up_move_search, character_name)
     else:
-        data_to_add: pandas.DataFrame = pandas.DataFrame()
+        data_to_add = pandas.DataFrame()
 
     generic_move_name_regex: str = r"(.*?)([lmh])([pk])"
     repeat_moves_regex: str = r"[Xx](\d+)$"
@@ -163,7 +133,7 @@ def get_frame_data_for_move(move_name: str, df: pandas.DataFrame) -> pandas.Data
         # get the move name without the repeat count and set the move name to that
         data_for_move = find_repeat_move_data(move_name, df,
                                               repeat_moves_regex,
-                                              repeat_search)
+                                              repeat_search, character_name)
 
     # if the move name is not in the frame data dataframe, check if it has an alias
     if data_for_move.empty:
@@ -171,7 +141,7 @@ def get_frame_data_for_move(move_name: str, df: pandas.DataFrame) -> pandas.Data
         logger.debug(f"Move name not found, checking aliases")
 
         # try to get the alias move name
-        data_for_move = find_alias_move_data(move_name, df)
+        data_for_move = find_alias_move_data(move_name, df, character_name)
 
     # if the move name is not in the frame data dataframe, try to find a generic form of the move name in the frame data dataframe
     elif data_for_move.empty and re.search(generic_move_name_regex, move_name):
@@ -182,7 +152,7 @@ def get_frame_data_for_move(move_name: str, df: pandas.DataFrame) -> pandas.Data
 
         # search for the generic move name in the frame data dataframe
         data_for_move = find_generic_move_data(
-            move_name, df, generic_move_name_regex)
+            move_name, df, generic_move_name_regex, character_name)
 
     # if the move name is not in the frame data dataframe, log that the move was not found
     if data_for_move.empty:
@@ -200,7 +170,7 @@ def get_frame_data_for_move(move_name: str, df: pandas.DataFrame) -> pandas.Data
     return data_for_move
 
 
-def find_generic_move_data(move_name: str, df: pandas.DataFrame, generic_move_name_regex: str) -> pandas.DataFrame:
+def find_generic_move_data(move_name: str, df: pandas.DataFrame, generic_move_name_regex: str, character_name: str) -> pandas.DataFrame:
 
     match: re.Match[str] | None = re.search(generic_move_name_regex,
                                             move_name,
@@ -223,7 +193,7 @@ def find_generic_move_data(move_name: str, df: pandas.DataFrame, generic_move_na
 
 
 def find_alias_move_data(move_name: str,
-                         df: pandas.DataFrame) -> pandas.DataFrame:
+                         df: pandas.DataFrame, character_name: str) -> pandas.DataFrame:
     move_name_alias: str = get_alias_move(move_name)
 
     # if the alias move name is not empty, get the frame data for the alias move name
@@ -242,6 +212,7 @@ def find_repeat_move_data(
     df: pandas.DataFrame,
     repeat_moves_regex: str,
     repeat_search: re.Match[str] | None,
+    character_name: str
 ) -> pandas.DataFrame:
 
     move_name_without_repeat_count: str = re.sub(repeat_moves_regex, "",
@@ -277,7 +248,8 @@ def find_repeat_move_data(
 def find_base_move_data_for_followup_move(
     move_name: str,
     df: pandas.DataFrame,
-    follow_up_move_search: re.Match[str]
+    follow_up_move_search: re.Match[str],
+    character_name: str
 ) -> tuple[pandas.DataFrame, str]:
     # if the move is a follow-up move, get the frame data for the follow-up move and return the name of the base move and the frame data for the follow-up move
     base_move_name: str = follow_up_move_search.group(1)
@@ -301,12 +273,14 @@ def get_alias_move(move_name: str) -> str:
 
 def get_frame_data_for_combo(combo_df: pandas.DataFrame) -> pandas.DataFrame:
 
+    character_name: str = combo_df[const.CHARACTER_NAME_COLUMN].iloc[0]
+
     # initialize an empty frame data pandas.DataFrame
     combo_framedata_df: pandas.DataFrame = pandas.DataFrame(
         columns=full_framedata_df.columns)
 
     # get the combo moves from the given combo pandas.DataFrame
-    combo_moves: pandas.Series[str] = combo_df[move_column_name]
+    combo_moves: pandas.Series[str] = combo_df[const.MOVE_NAME_COLUMN]
 
     # loop through each move in the combo
     for move in combo_moves:
@@ -316,28 +290,13 @@ def get_frame_data_for_combo(combo_df: pandas.DataFrame) -> pandas.DataFrame:
         move.strip()
         # get the frame data for the current move
         move_framedata: pandas.DataFrame = get_frame_data_for_move(
-            move, full_framedata_df)
+            move, full_framedata_df, character_name)
 
         # append the move frame data to the temporary frame data pandas.DataFrame
         combo_framedata_df = concatenate_dataframes(combo_framedata_df,
                                                     move_framedata)
 
     return combo_framedata_df
-
-
-combo_framedata_df: pandas.DataFrame = get_frame_data_for_combo(
-    combo_framedata_df)
-
-
-maxUndizzy: int = 240
-damageScaling: float = 0.875
-damageScalingMin: float = 0.2
-# damage scaling minimum for attacks with over 1000 base damage
-damageScalingMinBigHit: float = 0.275
-# all hits after the 3rd hit are scaled compundingly by 0.875
-# the minimum damage scaling is 0.2
-# the minimum damage scaling for attacks with over 1000 base damage is 0.275
-# function to calculate the damage scaling for a hit
 
 
 def parse_hits(combo_frame_data_df: pandas.DataFrame) -> pandas.DataFrame:
@@ -353,31 +312,34 @@ def parse_hits(combo_frame_data_df: pandas.DataFrame) -> pandas.DataFrame:
 
     # Set up the dataframe for the hits
     hits_df: pandas.DataFrame = pandas.DataFrame(
-        columns=["Move Name", "Damage", "Chip", "Special"])
+        columns=[const.MOVE_NAME_COLUMN, "Damage", "Chip", "Special"])
 
-    for move in combo_frame_data_df["Move Name"]:
+    for movestr in combo_frame_data_df[const.MOVE_NAME_COLUMN]:
+        # find a way to keep track of the cell that is being parsed
+
+        # Get the series for the current move
+        move_series: pandas.Series = combo_frame_data_df.loc[
+            combo_frame_data_df[const.MOVE_NAME_COLUMN] == movestr]
+
         # If the move is a kara, set the damage of the previous move to 0
-        if move == "kara":
+        if movestr == "kara":
             logger.debug(
                 f"Kara cancel detected, setting damage of previous move to 0")
             # get the location of the move 1 row above the current move
-            combo_frame_data_df.loc[combo_frame_data_df.index.get_loc(move) -
+            combo_frame_data_df.loc[combo_frame_data_df.index.get_loc(movestr) -
                                     1, "Damage"] = 0
             continue
 
         # If the move does not have any damage, continue to the next move
-        damage_check: pandas.DataFrame = combo_frame_data_df.loc[
-            combo_frame_data_df["Move Name"] == move, "Damage"]  # type:ignore
-        if damage_check.empty or damage_check.iloc[0] == "":
+        if move_series["Damage"].isnull().values.any():
+            logger.debug(f"Move [{movestr}] does not have any damage")
             continue
-
         # Initialize the lists for the damage, chip, and special properties of the move
         move_chip: list[str] = []
         move_special: list[str] = []
 
         # Get the damage list for the current move
-        currentmove_damagestr: str = combo_frame_data_df.loc[
-            combo_frame_data_df["Move Name"] == move, "Damage"].iloc[0]  # type:ignore
+        currentmove_damagestr: str = move_series["Damage"].iloc[0]
 
         # Extract the chip properties from the damage list and remove them from the list
         move_chip, currentmove_damagestr = extract_values_from_parentheses(
@@ -391,7 +353,7 @@ def parse_hits(combo_frame_data_df: pandas.DataFrame) -> pandas.DataFrame:
 
         # clean the damage list and extract the damage, adding a row to the hits dataframe for each hit
         hits_df: pandas.DataFrame = clean_and_extract_damage(
-            hits_df, move, currentmove_damagelist)
+            hits_df, movestr, currentmove_damagelist)
 
     return hits_df
 
@@ -524,16 +486,17 @@ def get_damage_scaling_for_hit(hit_num: int, d: int) -> float:
     # check if the damage is 0 -0 or none
     if damage == 0 or damage == -0:
         # return the damage scaling for the hit before, as the hit did no damage
-        return max(damageScalingMin, damageScaling**(hit_num - 4))
+        return max(const.DAMAGE_SCALING_MIN, const.DAMAGE_SCALING_FACTOR**(hit_num - 4))
 
     if hit_num <= 3:
         return 1
     # check if the damage is greater than 1000
     if damage >= 1000:
-        scaling: float = max(damageScalingMinBigHit,
-                             damageScaling**(hit_num - 3))
+        scaling: float = max(const.DAMAGE_SCALING_MIN_ABOVE_1K,
+                             const.DAMAGE_SCALING_FACTOR**(hit_num - 3))
     else:
-        scaling: float = max(damageScalingMin, damageScaling**(hit_num - 3))
+        scaling: float = max(const.DAMAGE_SCALING_MIN,
+                             const.DAMAGE_SCALING_FACTOR**(hit_num - 3))
 
     # round the damage scaling to 3 decimal places
    # scaling: float = round(scaling, 3)
@@ -550,12 +513,12 @@ def get_combo_damage(combo_frame_data_df) -> int:
 
     # create a new table to store the damage and undizzy values for each hit
     table_undizzy_damage: pandas.DataFrame = pandas.DataFrame(columns=[
-        "Move Name",
-        "Hit Number",
-        "Damage",
-        "DamageScaling",
-        "Scaled Damage",
-        "Undizzy",
+        const.MOVE_NAME_COLUMN,
+        const.HIT_NUMBER_COLUMN,
+        const.DAMAGE_COLUMN,
+        const.DAMAGE_SCALING_COLUMN,
+        const.SCALED_DAMAGE_COLUMN,
+        const.UNDIZZY_COLUMN,
     ])
 
     df_newhits: pandas.DataFrame = parse_hits(combo_frame_data_df)
@@ -602,7 +565,7 @@ def total_damage_for_moves(
     # loop through each row in the df
     for hit in range(len(damage_undizzy_table)):
 
-        move_name: str = damage_undizzy_table.at[hit, "Move Name"]
+        move_name: str = damage_undizzy_table.at[hit, const.MOVE_NAME_COLUMN]
 
         # add the damage to the total damage for the move
         move_damage += damage_undizzy_table.at[hit, "Scaled Damage"]
@@ -610,7 +573,7 @@ def total_damage_for_moves(
 
         # if it's not the last row and the next row has a different move name
         if (hit < len(damage_undizzy_table) - 1 and
-                move_name != damage_undizzy_table.at[hit + 1, "Move Name"]):
+                move_name != damage_undizzy_table.at[hit + 1, const.MOVE_NAME_COLUMN]):
 
             # add the total damage for the move to the damageAndUndizzyTable at the location of the first hit of the move
             damage_undizzy_table.at[hit, "Total Damage For Move"] = move_damage
@@ -626,12 +589,58 @@ def total_damage_for_moves(
     return damage_undizzy_table
 
 
-damage: int = get_combo_damage(combo_framedata_df)
+def skombo() -> None:
+    csv_list = get_csv_list("data\combo_csvs")
+
+    logging.basicConfig(stream=sys.stdout,
+                        level=logging.WARNING,
+                        format="%(message)s")
+
+    for csv in csv_list:
+
+        combo_input_df: pandas.DataFrame = pandas.read_csv(csv)
+
+        expected_damage: int = get_first_value_from_df(
+            combo_input_df, "Expected Damage")
+
+        # Set some constants
+        character_name: str = get_first_value_from_df(
+            combo_input_df, "Character")
+
+        move_column_name: str = const.MOVE_NAME_COLUMN
+
+        # Create an empty dataframe to hold the combo data
+        # Uses the same columns as tempFrameData
+        combo_framedata_df: pandas.DataFrame = create_df_copy_columns(
+            full_framedata_df)
+
+        combo_framedata_df = concatenate_dataframes(
+            combo_framedata_df, split_columns(combo_input_df, move_column_name, " "))
+
+        # Set the character column in the comboDf to the character name
+        set_column_value(combo_framedata_df, "Character", character_name)
+
+        logger.debug(f"Combo dataframe:\n{combo_framedata_df}\n")
+
+        combo_framedata_df: pandas.DataFrame = get_frame_data_for_combo(
+            combo_framedata_df)
+
+        damage: int = get_combo_damage(combo_framedata_df)
+
+        print(f"Calculated damage: {damage}")
+        print(f"Expected damage: {expected_damage}")
+        print("Difference: " + str(damage - expected_damage))
+        print("Different as percentage: " + '%.2f' %
+              ((damage - expected_damage) / expected_damage * 100) + "%")
 
 
-logger.debug(f"Calculated damage: {damage}")
-logger.debug(f"Expected damage: {expected_damage}")
+# main function
 
-logger.debug("Difference: " + str(damage - expected_damage))
-logger.debug("Different as percentage: " + '%.2f' %
-             ((damage - expected_damage) / expected_damage * 100) + "%")
+
+def main() -> None:
+
+    skombo()
+
+
+if __name__ == "__main__":
+    main()
