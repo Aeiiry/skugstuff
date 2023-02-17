@@ -13,4 +13,7 @@ disable=
    logging-fstring-interpolation,
    line-too-long,
    invalid-name,
-   E1136  # pylint/issues/3139
+   E1136  # pylint/issues/3139,
+
+[MASTER]
+extension-pkg-allow-list=PyQt5
