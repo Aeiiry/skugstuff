@@ -26,7 +26,12 @@ def get_damage_scaling_for_hit(hit_num: int, damage: int) -> float:
     Returns:
         float: The damage scaling for the hit.
     """
-
+    # attempt to convert the damage to an int
+    try:
+        damage = int(damage)
+    except ValueError:
+        logger.error("Damage is not an int")
+        sys.exit(1)
     # check if the damage is 0 -0 or none
     if damage in [0, -1]:
         # return the damage scaling for the hit before, as the hit did no damage

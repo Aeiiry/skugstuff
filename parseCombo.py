@@ -54,8 +54,12 @@ def split_columns(
     Returns:
         pandas.DataFrame: dataframe with the column split
     """
-    splitdf: pandas.DataFrame = df.copy()
+    splitdf = df.copy()
+    # split the values in a column on a given seperator
+    logger.debug(f'Splitting {column_name} on "{seperator}"')
     splitdf[column_name] = splitdf[column_name].str.split(seperator)
+    # explode the column so that each value is on a row
+    splitdf = splitdf.explode(column_name)
     return splitdf
 
 
