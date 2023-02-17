@@ -2,13 +2,8 @@
   "python.analysis.typeCheckingMode": "basic",
   "cSpell.enableFiletypes": ["!python"],
   "python.linting.banditEnabled": true,
-  "python.linting.mypyEnabled": true,
-  "python.linting.pylintEnabled": true,
+  "python.linting.mypyEnabled": false,
+  "python.linting.pylintEnabled": false,
   "python.linting.enabled": true,
-  "python.linting.flake8Enabled": false,
-  "python.linting.mypyArgs": [],
-  "editor.inlineSuggest.enabled": true,
-  "workbench.tree.renderIndentGuides": "always",
-  "editor.guides.highlightActiveIndentation": "always",
-  "python.formatting.provider": "black"
+  "python.linting.flake8Enabled": false
 }
