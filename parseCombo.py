@@ -559,11 +559,11 @@ def clean_and_extract_damage(
     return output_df
 
 
-def extract_values_from_brackets(list: list[str], string: str) -> tuple[list[str], str]:
+def extract_values_from_brackets(lst: list[str], string: str) -> tuple[list[str], str]:
     """Extracts values from a string surrounded by square brackets and removes them from the string
 
     Args:
-        list (list[str]): list of strings, extracted values will be appended to this list
+        lst (list[str]): list of strings, extracted values will be appended to this list
         string (str): string to search for values
 
     Returns:
@@ -578,24 +578,24 @@ def extract_values_from_brackets(list: list[str], string: str) -> tuple[list[str
         r: re.Match[str] | None = re.search(bracket_regex, string)
         # Append the match to the list
         if r:
-            list.append(r.group(0))
+            lst.append(r.group(0))
         # Remove the regex pattern from the string
         return_string = re.sub(bracket_regex, "", string)
         # Log the list and string
-        logger.debug(list)
+        logger.debug(lst)
         logger.debug(return_string)
     # Return the string
-    return list, return_string
+    return lst, return_string
 
 
 def extract_values_from_parentheses(
-    list: list[str], string: str
+    lst: list[str], string: str
 ) -> tuple[list[str], str]:
     """Extracts values from a string surrounded by parentheses and removes them from the string
 
     Args:
-        l (list[str]): list of strings, extracted values will be appended to this list
-        s (str): string to search for values
+        lst (list[str]): list of strings, extracted values will be appended to this list
+        string (str): string to search for values
 
     Returns:
         tuple[list[str], str]: tuple containing the list of extracted values and the string with the values removed
@@ -609,9 +609,9 @@ def extract_values_from_parentheses(
         r: re.Match[str] | None = re.search(parentheses_regex, string)
         # append string inside parentheses to list
         if r:
-            list.append(r.group(0))
+            lst.append(r.group(0))
         # remove parentheses and string from string
         return_string = re.sub(parentheses_regex, "", string)
-        logger.debug(list)
+        logger.debug(lst)
         logger.debug(return_string)
-    return list, return_string
+    return lst, return_string
