@@ -28,7 +28,7 @@ def get_damage_scaling_for_hit(hit_num: int, damage: int) -> float:
     """
     # attempt to convert the damage to an int
     try:
-        damage = int(damage)
+        damage: int = int(damage)
     except ValueError:
         logger.error("Damage is not an int")
         sys.exit(1)
@@ -67,8 +67,8 @@ def get_combo_damage(combo_frame_data_df: pandas.DataFrame) -> int:
         int: The total damage of the combo.
     """
     # undizzy values for each hit level are 15,30,40,30,0
-    str_hitnum = "Hit Number"
-    str_scaled_dmg = "Scaled Damage"
+    str_hitnum: Literal['Hit Number'] = "Hit Number"
+    str_scaled_dmg: Literal['Scaled Damage'] = "Scaled Damage"
 
     table_undizzy: pandas.DataFrame = pandas.DataFrame(
         columns=["Light", "Medium", "Heavy", "Special", "Throws+Supers"]
@@ -136,7 +136,7 @@ def total_damage_for_moves(damage_undizzy_table: pandas.DataFrame) -> pandas.Dat
         pandas.DataFrame: The dataframe containing the damage and undizzy values for each hit with the total damage for each move added.
     """
 
-    str_total_dmg_for_move = "Total Damage for Move"
+    str_total_dmg_for_move: Literal['Total Damage for Move'] = "Total Damage for Move"
     # add a new column to the df to store the total damage for each move
     damage_undizzy_table.at[:, str_total_dmg_for_move] = 0
     move_damage: int = 0
@@ -172,7 +172,7 @@ def total_damage_for_moves(damage_undizzy_table: pandas.DataFrame) -> pandas.Dat
 def skombo() -> None:
     """Temp main function.
     TODO(Aeiry): move to a UI."""
-    csv_list = pc.get_csv_list("data\\combo_csvs")
+    csv_list: list[str] = pc.get_csv_list("data\\combo_csvs")
 
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format="%(message)s")
 
