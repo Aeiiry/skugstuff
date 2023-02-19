@@ -28,7 +28,7 @@ def get_damage_scaling_for_hit(hit_num: int, damage: int) -> float:
     """
     # attempt to convert the damage to an int
     try:
-        damage: int = int(damage)
+        damage = int(damage)
     except ValueError:
         logger.error("Damage is not an int")
         sys.exit(1)
@@ -67,8 +67,8 @@ def get_combo_damage(combo_frame_data_df: pandas.DataFrame) -> int:
         int: The total damage of the combo.
     """
     # undizzy values for each hit level are 15,30,40,30,0
-    str_hitnum: Literal['Hit Number'] = "Hit Number"
-    str_scaled_dmg: Literal['Scaled Damage'] = "Scaled Damage"
+    str_hitnum = "Hit Number"
+    str_scaled_dmg = "Scaled Damage"
 
     table_undizzy: pandas.DataFrame = pandas.DataFrame(
         columns=["Light", "Medium", "Heavy", "Special", "Throws+Supers"]
@@ -136,13 +136,12 @@ def total_damage_for_moves(damage_undizzy_table: pandas.DataFrame) -> pandas.Dat
         pandas.DataFrame: The dataframe containing the damage and undizzy values for each hit with the total damage for each move added.
     """
 
-    str_total_dmg_for_move: Literal['Total Damage for Move'] = "Total Damage for Move"
+    str_total_dmg_for_move = "Total Damage for Move"
     # add a new column to the df to store the total damage for each move
     damage_undizzy_table.at[:, str_total_dmg_for_move] = 0
     move_damage: int = 0
     # loop through each row in the df
     for hit in range(len(damage_undizzy_table)):
-
         move_name: str = damage_undizzy_table.at[hit, const.MOVE_NAME_COLUMN]
 
         # add the damage to the total damage for the move
@@ -154,7 +153,6 @@ def total_damage_for_moves(damage_undizzy_table: pandas.DataFrame) -> pandas.Dat
             hit < len(damage_undizzy_table) - 1
             and move_name != damage_undizzy_table.at[hit + 1, const.MOVE_NAME_COLUMN]
         ):
-
             # add the total damage for the move to the damageAndUndizzyTable at the location of the first hit of the move
             damage_undizzy_table.at[hit, str_total_dmg_for_move] = move_damage
 
@@ -177,7 +175,6 @@ def skombo() -> None:
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format="%(message)s")
 
     for csv in csv_list:
-
         combo_input_df: pandas.DataFrame = pandas.read_csv(csv)
 
         expected_damage: int = pc.get_first_value_from_df(
