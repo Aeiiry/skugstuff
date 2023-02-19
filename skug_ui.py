@@ -2,8 +2,6 @@
 
 # main function
 import logging
-import re
-import string
 import sys
 import os
 import tkinter as tk
