@@ -1,4 +1,4 @@
-Character,Move Name,Expected Damage
+Character,MoveName,ExpectedDamage
 Annie,2LK 2mK 2HP,1000000
 ,M crescent dash taunt,
 ,level 3,

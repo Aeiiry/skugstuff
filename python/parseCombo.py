@@ -1,13 +1,9 @@
 """Functions for parsing the combo data from the csv files"""
-import logging
 import os
 import typing
 import re
 import pandas
-import constants as const
-
-logging.basicConfig(level=logging.DEBUG)
-logger: logging.Logger = logging.getLogger(__name__)
+from constants import *  # NOSONAR
 
 
 def get_csv_list(path: str) -> list[str]:
@@ -17,7 +13,6 @@ def get_csv_list(path: str) -> list[str]:
 
 def create_df_copy_columns(df: pandas.DataFrame) -> pandas.DataFrame:
     """Creates a copy of a dataframe with the same columns"""
-
     copy_df: pandas.DataFrame = pandas.DataFrame(columns=df.columns)
 
     return copy_df
@@ -94,36 +89,47 @@ def find_move_from_name_and_character(
         pandas.DataFrame: The dataframe containing the move data
     """
 
-    # logger.debug(f"Searching for [{move_name}] for character [{character_name}]")
+    return_df: pandas.DataFrame = pandas.DataFrame()
 
     name_regex: str = rf"^{move_name}$|^{move_name}\n|\n{move_name}$|\n{move_name}\n"
 
     # Check if the character name is the same, case insensitive
-    character_check: pandas.Series[bool] = df["Character"].str.contains(
+    character_check: pandas.Series[bool] = df[CHARACTER_NAME].str.contains(
         character_name, flags=re.IGNORECASE
     )
 
-    # for each of the rows that match the character name, check if the move name is the same
     for index, row in df[character_check].iterrows():
+
+        # avoid type errors
+        if not isinstance(index, int):
+            raise TypeError(f"Index is not an int, but a {type(index)}")
+
         # check if the move name is the same, case insensitive
         move_check_regex: re.Match[str] | None = re.search(
-            name_regex, row["Move Name"], flags=re.IGNORECASE
+            name_regex, row["MoveName"], flags=re.IGNORECASE
         )
         if move_check_regex:
             logger.debug(f"Found move [{move_name}] for character [{character_name}]")
-            return df.loc[[index]]
+            return_df = df.loc[[index]]
+            # replace the first column's value with the index
+            return_df.iloc[0, 0] = index
+            return return_df
         else:
             move_check_regex = re.search(
-                name_regex, row["Alt Names"], flags=re.IGNORECASE
+                name_regex, row["AltNames"], flags=re.IGNORECASE
             )
             if move_check_regex:
                 logger.debug(
-                    f"Found move [{move_name}] for character [{character_name}]"
+                    f"Found move [{move_name}] for character [{character_name}] at index [{index}]"
                 )
-                return df.loc[[index]]
-
+                return_df = df.loc[[index]]
+                # replace the first column's value with the index
+                return_df.iloc[0, 0] = index
+                return return_df
     logger.debug(f"Could not find move [{move_name}] for character [{character_name}]")
-    return pandas.DataFrame()
+
+    # if the move was not found, return an empty dataframe
+    return return_df
 
 
 def get_frame_data_for_move(
@@ -144,7 +150,7 @@ def get_frame_data_for_move(
     """
     # Get the frame data for a single move, given a move name and a dataframe
 
-    logger.debug(f"=================\nGetting frame data for move [{move_name}]")
+    logger.debug(f"\nGetting frame data for move [{move_name}]")
     # check for follow-up moves such as 214HP~P or QCBLP P or 214 MP,P etc
     # regex that matches L, M or H, followed by P or K followed by "~", ",", "+" or " " followed by P or K
     follow_up_move_regex: str = r"(.+[lmh]?[pk])([~\+,\s]){1,3}([pk])"
@@ -165,7 +171,7 @@ def get_frame_data_for_move(
         data_to_add = pandas.DataFrame()
 
     generic_move_name_regex: str = r"(.*?)([lmh])([pk])"
-    repeat_moves_regex: str = r"[Xx](\d+)$"
+    repeat_moves_regex: str = r"\s?[Xx]\s?(\d+)$"
 
     data_for_move: pandas.DataFrame = find_move_from_name_and_character(
         move_name, character_name, full_framedata_df
@@ -223,6 +229,7 @@ def get_frame_data_for_move(
             data_for_move = pandas.concat([data_for_move, data_to_add])
 
     # return the dataframe with the move data
+    logger.debug(f"Returning data for move [{move_name}]\n")
     return data_for_move
 
 
@@ -302,6 +309,7 @@ def find_repeat_move_data(
     repeat_search: re.Match[str] | None,
     character_name: str,
 ) -> pandas.DataFrame:
+
     """Attempt to find the frame data for a repeat move, e.g. 5MKx2
 
     Args:
@@ -316,6 +324,7 @@ def find_repeat_move_data(
     """
 
     move_name_without_repeat_count: str = re.sub(repeat_moves_regex, "", move_name)
+    logger.debug(f"Move name without repeat count [{move_name_without_repeat_count}]")
 
     # get the frame data for the move without the repeat count
     data_for_move_without_repeat_count: pandas.DataFrame = (
@@ -328,19 +337,22 @@ def find_repeat_move_data(
         data_for_move: pandas.DataFrame = data_for_move_without_repeat_count
         # if the move without the repeat count is found, get next x normals in the sequence where x is the repeat count -1
         # eg if the move is 5HPx3, get the frame data for 5HP, then get the frame data for 5HPx2 and 5HPx3
-        logger.debug(f"Found data for move [{move_name_without_repeat_count}]")
-        for i in range(int(repeat_search.group(1)) - 1) if repeat_search else range(0):
-            temp_move_name: str = move_name_without_repeat_count + "X" + str(i + 2)
-            temp_move_data: pandas.DataFrame = find_move_from_name_and_character(
-                temp_move_name, character_name, full_framedata_df
-            )
+        # first index is column 0 of data_for_move
 
-            data_for_move = pandas.concat(
-                [data_for_move, temp_move_data],
-                ignore_index=True,
-            )
+        logger.debug(f"Found data for move [{move_name_without_repeat_count}]")
+
+        for i in range(int(repeat_search.group(1)) - 1) if repeat_search else range(0):
+
+            base_move_index: int = data_for_move.iat[0, 0]
+            next_move_in_sequence: pandas.Series = full_framedata_df.iloc[
+                1 + i + base_move_index
+            ]
+            logger.debug(f"Next move: {next_move_in_sequence[MOVE_NAME]}")
+            data_for_move = pandas.concat([data_for_move, next_move_in_sequence.to_frame().T])
     else:
+        logger.warning(f"Could not find repeat data for move [{move_name}]")
         data_for_move = pandas.DataFrame()
+
 
     return data_for_move
 
@@ -411,7 +423,7 @@ def get_frame_data_for_combo(
 
     # get the character name from the combo pandas.DataFrame
 
-    character_name: str = combo_df[const.CHARACTER_NAME_COLUMN].iloc[0]
+    character_name: str = combo_df[CHARACTER_NAME].iloc[0]
 
     # initialize an empty frame data pandas.DataFrame
     combo_framedata_df: pandas.DataFrame = pandas.DataFrame(
@@ -419,10 +431,16 @@ def get_frame_data_for_combo(
     )
 
     # get the combo moves from the given combo pandas.DataFrame
-    combo_moves: pandas.Series = combo_df[const.MOVE_NAME_COLUMN]
+    combo_moves: pandas.Series = combo_df[MOVE_NAME]
 
     # get the frame data for all moves in the combo by looping through the moves
     for move in combo_moves:
+
+        # Check against automatically ignored moves
+        if move in IGNORED_MOVES:
+            logger.debug(f"Ignoring move [{move}], it is in the ignored moves list")
+            continue
+
         move_framedata: pandas.DataFrame = get_frame_data_for_move(
             move, full_framedata_df, character_name, move_name_alias_df
         )
@@ -448,15 +466,15 @@ def parse_hits(combo_frame_data_df: pandas.DataFrame) -> pandas.DataFrame:
 
     # Set up the dataframe for the hits
     hits_df: pandas.DataFrame = pandas.DataFrame(
-        columns=[const.MOVE_NAME_COLUMN, "Damage", "Chip", "Special"]
+        columns=[MOVE_NAME, "Damage", "Chip", "Special"]
     )
 
-    for movestr in combo_frame_data_df[const.MOVE_NAME_COLUMN]:
+    for movestr in combo_frame_data_df[MOVE_NAME]:
         # find a way to keep track of the cell that is being parsed
 
         # Get the series for the current move
         move_series: pandas.Series = combo_frame_data_df.loc[
-            combo_frame_data_df[const.MOVE_NAME_COLUMN] == movestr
+            combo_frame_data_df[MOVE_NAME] == movestr
         ]
 
         # If the move is a kara, set the damage of the previous move to 0
@@ -464,7 +482,7 @@ def parse_hits(combo_frame_data_df: pandas.DataFrame) -> pandas.DataFrame:
             logger.debug("Kara cancel detected, setting damage of previous move to 0")
             # get the location of the move 1 row above the current move
             previous_move_location: int = combo_frame_data_df.index[
-                combo_frame_data_df[const.MOVE_NAME_COLUMN] == movestr
+                combo_frame_data_df[MOVE_NAME] == movestr
             ][0]
             # set the damage of the previous move to 0
             combo_frame_data_df.loc[previous_move_location, "Damage"] = 0
@@ -555,7 +573,6 @@ def clean_and_extract_damage(
             )
             # append the temporary pandas.DataFrame to the hits pandas.DataFrame
             output_df = pandas.concat([output_df, temp_df], ignore_index=True)
-        logger.info(f"moveDamage: {move_dmg}")
     return output_df
 
 

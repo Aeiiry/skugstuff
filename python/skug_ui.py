@@ -72,6 +72,7 @@ def get_font_name(font: ttLib.TTFont) -> tuple[str, str]:
 
 
 def create_home_canvas(window: tk.Tk) -> tk.Canvas:
+    """ Create the home screen canvas"""
     home_canvas: tk.Canvas = tk.Canvas(window, bg="white", borderwidth=2)
 
     # create the home screen frames

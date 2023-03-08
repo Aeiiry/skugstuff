@@ -5,10 +5,12 @@
    "version": "0.2.0",
    "configurations": [
       {
-         "name": "Python: Module",
+         "name": "Python: Current File",
          "type": "python",
          "request": "launch",
-         "justMyCode": false
+         "justMyCode": true,
+         "cwd": "${fileDirname}",
+         "program": "${file}",
       }
    ]
 }

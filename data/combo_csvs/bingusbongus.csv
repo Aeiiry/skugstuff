@@ -1,4 +1,4 @@
-Character,Move Name,Expected Damage
+Character,MoveName,ExpectedDamage
 Eliza,2LK 2MP 2HP 236MK,10164
 ,dash 2MK 5HPx3 623HP,
 ,jMK adc jLK jMP,
