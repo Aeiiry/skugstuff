@@ -5,6 +5,7 @@ import logging
 # Column names
 CHARACTER_NAME: Literal["Character"] = "Character"
 MOVE_NAME: Literal["MoveName"] = "MoveName"
+ALT_NAMES: Literal["AltNames"] = "AltNames"
 DAMAGE: Literal["Damage"] = "Damage"
 
 EXPECTED_DAMAGE: Literal["ExpectedDamage"] = "ExpectedDamage"
@@ -34,7 +35,7 @@ UNDIZZY_DICT: dict = {
     "Throws+Supers": 0,
 }
 
-LOG_LEVEL_CONSOLE: int = logging.WARNING
+LOG_LEVEL_CONSOLE: int = logging.INFO
 LOG_LEVEL_FILE: int = logging.DEBUG
 
 # Move names to automatically ignore
@@ -62,24 +63,36 @@ def logger_setup() -> logging.Logger:
         "[%(relativeCreated)dms] %(filename)s:%(lineno)d:%(funcName)s | %(levelname)s | %(message)s"
     )
 
-    console_format: logging.Formatter = logging.Formatter("%(levelname)s | %(message)s")
+    console_format: logging.Formatter = logging.Formatter(
+        "%(levelname)s | %(message)s")
 
     # Console handler
     console_handler: logging.StreamHandler = logging.StreamHandler()
     console_handler.setFormatter(console_format)
     console_handler.setLevel(LOG_LEVEL_CONSOLE)
 
-    # File handler
-    file_handler: logging.FileHandler = logging.FileHandler("skug_combo.log", mode="w")
+    # Verbose log handler
+    verbose_log_handler: logging.FileHandler = logging.FileHandler(
+        "skug_combo.log", mode="w")
 
-    file_handler.setFormatter(file_format)
-    file_handler.setLevel(LOG_LEVEL_FILE)
+    verbose_log_handler.setFormatter(file_format)
+    verbose_log_handler.setLevel(LOG_LEVEL_FILE)
+
+    # Info log handler
+    info_log_handler: logging.FileHandler = logging.FileHandler(
+        "skug_combo_info.log", mode="w")
+
+    info_log_handler.setFormatter(file_format)
+    info_log_handler.setLevel(logging.INFO)
+
+    # Logger
 
     logger: logging.Logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
 
     logger.addHandler(console_handler)
-    logger.addHandler(file_handler)
+    logger.addHandler(verbose_log_handler)
+    logger.addHandler(info_log_handler)
 
     return logger
 

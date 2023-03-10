@@ -4,6 +4,7 @@ import typing
 import re
 import pandas
 from constants import *  # NOSONAR
+from pandas import DataFrame, Series, concat, merge, read_csv
 
 
 def get_csv_list(path: str) -> list[str]:
@@ -11,24 +12,24 @@ def get_csv_list(path: str) -> list[str]:
     return [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".csv")]
 
 
-def create_df_copy_columns(df: pandas.DataFrame) -> pandas.DataFrame:
+def create_df_copy_columns(df: DataFrame) -> DataFrame:
     """Creates a copy of a dataframe with the same columns"""
-    copy_df: pandas.DataFrame = pandas.DataFrame(columns=df.columns)
+    copy_df: DataFrame = DataFrame(columns=df.columns)
 
     return copy_df
 
 
-def get_first_value_from_df(df: pandas.DataFrame, key: str) -> typing.Any:
+def get_first_value_from_df(df: DataFrame, key: str) -> typing.Any:
     """Gets the first value from a dataframe for a given key"""
     value: typing.Any = df[key][0]
     return value
 
 
-def set_column_value(df: pandas.DataFrame, column: str, value: str) -> None:
+def set_column_value(df: DataFrame, column: str, value: str) -> None:
     """Set an entire column to a given value
 
     Args:
-        df (pandas.DataFrame): dataframe to set the column value in
+        df (DataFrame): dataframe to set the column value in
         column (str): column to set the value in
         value (str): value to set the column to
     """
@@ -37,19 +38,19 @@ def set_column_value(df: pandas.DataFrame, column: str, value: str) -> None:
 
 
 def split_columns(
-    df: pandas.DataFrame, column_name: str, seperator: str
-) -> pandas.DataFrame:
+    df: DataFrame, column_name: str, seperator: str
+) -> DataFrame:
     """Split a column into multiple rows based on a given seperator
 
     Args:
-        df (pandas.DataFrame): dataframe to split the column in
+        df (DataFrame): dataframe to split the column in
         column_name (str): column to split
         seperator (str): seperator to split the column on
 
     Returns:
-        pandas.DataFrame: dataframe with the column split
+        DataFrame: dataframe with the column split
     """
-    splitdf = df.copy()
+    splitdf: DataFrame = df.copy()
     # split the values in a column on a given seperator
     logger.debug(f'Splitting {column_name} on "{seperator}"')
     splitdf[column_name] = splitdf[column_name].str.split(seperator)
@@ -59,121 +60,82 @@ def split_columns(
 
 
 def concatenate_dataframes(
-    dataframe1: pandas.DataFrame, dataframe2: pandas.DataFrame
-) -> pandas.DataFrame:
+    dataframe1: DataFrame, dataframe2: DataFrame
+) -> DataFrame:
     """Concatenate two dataframes
 
     Args:
-        dataframe1 (pandas.DataFrame): first dataframe to concatenate
-        dataframe2 (pandas.DataFrame): second dataframe to concatenate
+        dataframe1 (DataFrame): first dataframe to concatenate
+        dataframe2 (DataFrame): second dataframe to concatenate
 
     Returns:
-        pandas.DataFrame: resulting dataframe
+        DataFrame: resulting dataframe
     """
-    return pandas.concat([dataframe1, dataframe2], ignore_index=True)
+    return concat([dataframe1, dataframe2], ignore_index=True)
 
 
-def find_move_from_name_and_character(
-    # TODO(aeiry): Fix all of this, mostly the checking of the character name and move name
-    move_name: str,
-    character_name: str,
-    df: pandas.DataFrame,
-) -> pandas.DataFrame:
-    """Find a move from the move name and character name
+def find_move_from_name_and_character(move_name: str, character_name: str, df: DataFrame) -> DataFrame:
+    """Find a move from the move name and character name"""
 
-    Args:
-        move_name (str): The name of the move
-        character_name (str): The name of the character
-        df (pandas.DataFrame): The dataframe containing the move data
-    Returns:
-        pandas.DataFrame: The dataframe containing the move data
-    """
-
-    return_df: pandas.DataFrame = pandas.DataFrame()
-
+    # create regex pattern for move name
     name_regex: str = rf"^{move_name}$|^{move_name}\n|\n{move_name}$|\n{move_name}\n"
 
-    # Check if the character name is the same, case insensitive
-    character_check: pandas.Series[bool] = df[CHARACTER_NAME].str.contains(
-        character_name, flags=re.IGNORECASE
-    )
+    # check if character name is in dataframe
+    character_check: Series[bool] = df[CHARACTER_NAME].str.contains(
+        character_name, flags=re.IGNORECASE)
 
-    for index, row in df[character_check].iterrows():
+    # Create a slice of the dataframe with only the moves for the given character, and only the move name and alt names columns
+    character_move_df: DataFrame = df[character_check][[
+        MOVE_NAME, ALT_NAMES]]
 
-        # avoid type errors
-        if not isinstance(index, int):
-            raise TypeError(f"Index is not an int, but a {type(index)}")
+    # check if the move name is in the dataframe
+    move_check: Series[bool] = character_move_df[MOVE_NAME].str.contains(
+        name_regex, flags=re.IGNORECASE)
+    if not move_check.any():
+        # if the move name is not in the dataframe, check if the move name is in the alt names column
+        move_check = character_move_df[ALT_NAMES].str.contains(
+            name_regex, flags=re.IGNORECASE)
+    if move_check.any():
+        # if the move name is in the dataframe, get the move data
+        move_data: DataFrame = df[character_check & move_check]
+        return move_data
 
-        # check if the move name is the same, case insensitive
-        move_check_regex: re.Match[str] | None = re.search(
-            name_regex, row["MoveName"], flags=re.IGNORECASE
-        )
-        if move_check_regex:
-            logger.debug(f"Found move [{move_name}] for character [{character_name}]")
-            return_df = df.loc[[index]]
-            # replace the first column's value with the index
-            return_df.iloc[0, 0] = index
-            return return_df
-        else:
-            move_check_regex = re.search(
-                name_regex, row["AltNames"], flags=re.IGNORECASE
-            )
-            if move_check_regex:
-                logger.debug(
-                    f"Found move [{move_name}] for character [{character_name}] at index [{index}]"
-                )
-                return_df = df.loc[[index]]
-                # replace the first column's value with the index
-                return_df.iloc[0, 0] = index
-                return return_df
-    logger.debug(f"Could not find move [{move_name}] for character [{character_name}]")
-
-    # if the move was not found, return an empty dataframe
-    return return_df
+    # return empty dataframe if no matches are found
+    return DataFrame()
 
 
 def get_frame_data_for_move(
     move_name: str,
-    full_framedata_df: pandas.DataFrame,
+    full_framedata_df: DataFrame,
     character_name: str,
-    move_name_alias_df: pandas.DataFrame,
-) -> pandas.DataFrame:
-    """Get the frame data for a single move, given a move name and a dataframe
+    move_name_alias_df: DataFrame,
+) -> DataFrame:
+    """Get the frame data for a single move, given a move name and a dataframe"""
 
-    Args:
-        move_name (str): The name of the move
-        full_framedata_df (pandas.DataFrame): The dataframe containing the move data
-        character_name (str): The name of the character
-        move_name_alias_df (pandas.DataFrame): The dataframe containing the move aliases
-    Returns:
-        pandas.DataFrame: The dataframe containing the move data
-    """
-    # Get the frame data for a single move, given a move name and a dataframe
-
-    logger.debug(f"\nGetting frame data for move [{move_name}]")
+    logger.debug(
+        f"===========Getting frame data for move [{move_name}]===========")
     # check for follow-up moves such as 214HP~P or QCBLP P or 214 MP,P etc
     # regex that matches L, M or H, followed by P or K followed by "~", ",", "+" or " " followed by P or K
+
     follow_up_move_regex: str = r"(.+[lmh]?[pk])([~\+,\s]){1,3}([pk])"
-    # search for the follow-up move in the move name case insensitive
+
     follow_up_move_search: re.Match[str] | None = re.search(
         follow_up_move_regex, move_name, re.IGNORECASE
     )
 
     if follow_up_move_search:
-        # if the move name contains a follow-up move, get the frame data for the follow-up move
         logger.debug(f"Move [{move_name}] is a follow-up move")
 
-        # get the frame data for the follow-up move
         data_to_add, move_name = find_base_move_data_for_followup_move(
             move_name, full_framedata_df, follow_up_move_search, character_name
         )
     else:
-        data_to_add = pandas.DataFrame()
+        data_to_add: DataFrame = DataFrame()
 
     generic_move_name_regex: str = r"(.*?)([lmh])([pk])"
     repeat_moves_regex: str = r"\s?[Xx]\s?(\d+)$"
 
-    data_for_move: pandas.DataFrame = find_move_from_name_and_character(
+    data_for_move: DataFrame = find_move_from_name_and_character(
         move_name, character_name, full_framedata_df
     )
 
@@ -219,14 +181,15 @@ def get_frame_data_for_move(
     # if the move name is not in the frame data dataframe, log that the move was not found
     if data_for_move.empty:
 
-        logger.warning(f"Move {move_name} not found")
+        logger.warning(
+            f"Move {move_name} not found for character {character_name}")
 
         # return an empty dataframe with the same columns as the frame data dataframe
-        data_for_move = pandas.DataFrame(columns=full_framedata_df.columns)
+        data_for_move = DataFrame(columns=full_framedata_df.columns)
     else:
         if not data_to_add.empty:
             # if the move is a follow-up move, add the frame data for the follow-up move to the dataframe
-            data_for_move = pandas.concat([data_for_move, data_to_add])
+            data_for_move = concat([data_for_move, data_to_add])
 
     # return the dataframe with the move data
     logger.debug(f"Returning data for move [{move_name}]\n")
@@ -235,20 +198,20 @@ def get_frame_data_for_move(
 
 def find_generic_move_data(
     move_name: str,
-    full_framedata_df: pandas.DataFrame,
+    full_framedata_df: DataFrame,
     generic_move_name_regex: str,
     character_name: str,
-) -> pandas.DataFrame:
+) -> DataFrame:
     """Attempt to find a generic form of the move name in the frame data dataframe
 
     Args:
         move_name (str): Move name
-        full_framedata_df (pandas.DataFrame): Frame data dataframe
+        full_framedata_df (DataFrame): Frame data dataframe
         generic_move_name_regex (str): Regex to find generic move name
         character_name (str): Character name
 
     Returns:
-        pandas.DataFrame: Dataframe with move data, or empty dataframe if move not found
+        DataFrame: Dataframe with move data, or empty dataframe if move not found
     """
 
     match: re.Match[str] | None = re.search(
@@ -261,80 +224,82 @@ def find_generic_move_data(
         generic_move_name: str = match.group(1) + match.group(3)
 
         # search for the generic move name in the frame data dataframe
-        logger.debug(f"Data for move [{move_name}] found as [{generic_move_name}]")
-        data_for_move: pandas.DataFrame = find_move_from_name_and_character(
+        logger.debug(
+            f"Data for move [{move_name}] found as [{generic_move_name}]")
+        data_for_move: DataFrame = find_move_from_name_and_character(
             generic_move_name, character_name, full_framedata_df
         )
     else:
-        data_for_move = pandas.DataFrame()
+        data_for_move = DataFrame()
 
     return data_for_move
 
 
 def find_alias_move_data(
     move_name: str,
-    full_framedata_df: pandas.DataFrame,
+    full_framedata_df: DataFrame,
     character_name: str,
-    move_name_alias_df: pandas.DataFrame,
-) -> pandas.DataFrame:
+    move_name_alias_df: DataFrame,
+) -> DataFrame:
     """Attempt to find the alias move name in the frame data dataframe
 
     Args:
         move_name (str): Move name
-        full_framedata_df (pandas.DataFrame): Frame data dataframe
+        full_framedata_df (DataFrame): Frame data dataframe
         character_name (str): Character name
-        move_name_alias_df (pandas.DataFrame): Dataframe with move name aliases
+        move_name_alias_df (DataFrame): Dataframe with move name aliases
 
     Returns:
-        pandas.DataFrame: Dataframe with move data, or empty dataframe if move not found
+        DataFrame: Dataframe with move data, or empty dataframe if move not found
     """
     move_name_alias: str = get_alias_move(move_name, move_name_alias_df)
 
     # if the alias move name is not empty, get the frame data for the alias move name
     if move_name_alias != "":
         logger.debug(f"Alias for [{move_name}] found as [{move_name_alias}]")
-        data_for_move: pandas.DataFrame = find_move_from_name_and_character(
+        data_for_move: DataFrame = find_move_from_name_and_character(
             move_name_alias, character_name, full_framedata_df
         )
     else:
-        data_for_move = pandas.DataFrame()
+        data_for_move = DataFrame()
 
     return data_for_move
 
 
 def find_repeat_move_data(
     move_name: str,
-    full_framedata_df: pandas.DataFrame,
+    full_framedata_df: DataFrame,
     repeat_moves_regex: str,
     repeat_search: re.Match[str] | None,
     character_name: str,
-) -> pandas.DataFrame:
-
+) -> DataFrame:
     """Attempt to find the frame data for a repeat move, e.g. 5MKx2
 
     Args:
         move_name (str): Move name
-        full_framedata_df (pandas.DataFrame): Frame data dataframe
+        full_framedata_df (DataFrame): Frame data dataframe
         repeat_moves_regex (str): Regex to find repeat moves
         repeat_search (re.Match[str] | None): Match object for the repeat move
         character_name (str): Character name
 
     Returns:
-        pandas.DataFrame: Dataframe with move data, or empty dataframe if move not found
+        DataFrame: Dataframe with move data, or empty dataframe if move not found
     """
 
-    move_name_without_repeat_count: str = re.sub(repeat_moves_regex, "", move_name)
-    logger.debug(f"Move name without repeat count [{move_name_without_repeat_count}]")
+    move_name_without_repeat_count: str = re.sub(
+        repeat_moves_regex, "", move_name)
+    logger.debug(
+        f"Move name without repeat count [{move_name_without_repeat_count}]")
 
     # get the frame data for the move without the repeat count
-    data_for_move_without_repeat_count: pandas.DataFrame = (
+    data_for_move_without_repeat_count: DataFrame = (
         find_move_from_name_and_character(
             move_name_without_repeat_count, character_name, full_framedata_df
         )
     )
 
     if data_for_move_without_repeat_count is not None:
-        data_for_move: pandas.DataFrame = data_for_move_without_repeat_count
+        data_for_move: DataFrame = data_for_move_without_repeat_count
         # if the move without the repeat count is found, get next x normals in the sequence where x is the repeat count -1
         # eg if the move is 5HPx3, get the frame data for 5HP, then get the frame data for 5HPx2 and 5HPx3
         # first index is column 0 of data_for_move
@@ -344,58 +309,58 @@ def find_repeat_move_data(
         for i in range(int(repeat_search.group(1)) - 1) if repeat_search else range(0):
 
             base_move_index: int = data_for_move.iat[0, 0]
-            next_move_in_sequence: pandas.Series = full_framedata_df.iloc[
+            next_move_in_sequence: Series = full_framedata_df.iloc[
                 1 + i + base_move_index
             ]
             logger.debug(f"Next move: {next_move_in_sequence[MOVE_NAME]}")
-            data_for_move = pandas.concat([data_for_move, next_move_in_sequence.to_frame().T])
+            data_for_move = concat(
+                [data_for_move, next_move_in_sequence.to_frame().T])
     else:
         logger.warning(f"Could not find repeat data for move [{move_name}]")
-        data_for_move = pandas.DataFrame()
-
+        data_for_move = DataFrame()
 
     return data_for_move
 
 
 def find_base_move_data_for_followup_move(
     move_name: str,
-    full_framedata_df: pandas.DataFrame,
+    full_framedata_df: DataFrame,
     follow_up_move_search: re.Match[str],
     character_name: str,
-) -> tuple[pandas.DataFrame, str]:
+) -> tuple[DataFrame, str]:
     """Attempt to find the frame data for a follow-up move, e.g. 214MKx2
 
     Args:
         move_name (str): Move name
-        full_framedata_df (pandas.DataFrame): Frame data dataframe
+        full_framedata_df (DataFrame): Frame data dataframe
         follow_up_move_search (re.Match[str]): Match object for the follow-up move
         character_name (str): Character name
 
     Returns:
-        tuple[pandas.DataFrame, str]: Dataframe with move data, or empty dataframe if move not found, and the name of the base move
+        tuple[DataFrame, str]: Dataframe with move data, or empty dataframe if move not found, and the name of the base move
     """
     # if the move is a follow-up move, get the frame data for the follow-up move and return the name of the base move and the frame data for the follow-up move
     base_move_name: str = follow_up_move_search.group(1)
-    data_for_move: pandas.DataFrame = find_move_from_name_and_character(
+    data_for_move: DataFrame = find_move_from_name_and_character(
         move_name, character_name, full_framedata_df
     )
 
     return data_for_move, base_move_name
 
 
-def get_alias_move(move_name: str, move_name_alias_df: pandas.DataFrame) -> str:
+def get_alias_move(move_name: str, move_name_alias_df: DataFrame) -> str:
     """Get the alias move name for the given move name
 
     Args:
         move_name (str): Move name
-        move_name_alias_df (pandas.DataFrame): Dataframe with move name aliases
+        move_name_alias_df (DataFrame): Dataframe with move name aliases
 
     Returns:
         str: Alias move name, or empty string if no alias found
     """
 
     # get all move name aliases that contain the given move name
-    alias_df = move_name_alias_df[
+    alias_df: DataFrame = move_name_alias_df[
         move_name_alias_df["Value"].str.contains(
             move_name, na=False, flags=re.IGNORECASE
         )
@@ -406,66 +371,73 @@ def get_alias_move(move_name: str, move_name_alias_df: pandas.DataFrame) -> str:
 
 
 def get_frame_data_for_combo(
-    combo_df: pandas.DataFrame,
-    full_framedata_df: pandas.DataFrame,
-    move_name_alias_df: pandas.DataFrame,
-) -> pandas.DataFrame:
+    combo_df: DataFrame,
+    full_framedata_df: DataFrame,
+    move_name_alias_df: DataFrame,
+) -> DataFrame:
     """Get the frame data for a combo
 
     Args:
-        combo_df (pandas.DataFrame): Combo dataframe
-        full_framedata_df (pandas.DataFrame): Frame data dataframe
-        move_name_alias_df (pandas.DataFrame): Dataframe with move name aliases
+        combo_df (DataFrame): Combo dataframe
+        full_framedata_df (DataFrame): Frame data dataframe
+        move_name_alias_df (DataFrame): Dataframe with move name aliases
 
     Returns:
-        pandas.DataFrame: Dataframe with combo frame data
+        DataFrame: Dataframe with combo frame data
     """
 
-    # get the character name from the combo pandas.DataFrame
+    # get the character name from the combo DataFrame
 
     character_name: str = combo_df[CHARACTER_NAME].iloc[0]
 
-    # initialize an empty frame data pandas.DataFrame
-    combo_framedata_df: pandas.DataFrame = pandas.DataFrame(
+    # initialize an empty frame data DataFrame
+    combo_framedata_df: DataFrame = DataFrame(
         columns=full_framedata_df.columns
     )
 
-    # get the combo moves from the given combo pandas.DataFrame
-    combo_moves: pandas.Series = combo_df[MOVE_NAME]
+    # get the combo moves from the given combo DataFrame
+    combo_moves: Series = combo_df[MOVE_NAME]
 
     # get the frame data for all moves in the combo by looping through the moves
     for move in combo_moves:
-
-        # Check against automatically ignored moves
-        if move in IGNORED_MOVES:
-            logger.debug(f"Ignoring move [{move}], it is in the ignored moves list")
+        if isinstance(move, float):
+            logger.debug(
+                f"Move [{move}] is not a string, skipping it as it is not a move"
+            )
             continue
 
-        move_framedata: pandas.DataFrame = get_frame_data_for_move(
+        # Check against automatically ignored moves
+        # Case insensitive
+        if move.lower() in IGNORED_MOVES:
+            logger.debug(
+                f"Ignoring move [{move}], it is in the ignored moves list")
+            continue
+
+        move_framedata: DataFrame = get_frame_data_for_move(
             move, full_framedata_df, character_name, move_name_alias_df
         )
 
-        # append the move frame data to the temporary frame data pandas.DataFrame
-        combo_framedata_df = pandas.concat(
+        # append the move frame data to the temporary frame data DataFrame
+        combo_framedata_df = concat(
             [combo_framedata_df, move_framedata], ignore_index=True
         )
 
     return combo_framedata_df
 
 
-def parse_hits(combo_frame_data_df: pandas.DataFrame) -> pandas.DataFrame:
+def parse_hits(combo_frame_data_df: DataFrame) -> DataFrame:
     """Parse the hits from the combo frame data dataframe.
 
     Args:
-        combo_frame_data_df (pandas.DataFrame): Combo frame data dataframe.
+        combo_frame_data_df (DataFrame): Combo frame data dataframe.
 
     Returns:
-        pandas.DataFrame: Hits dataframe. Each row is a hit.
+        DataFrame: Hits dataframe. Each row is a hit.
     """
     # Set up the regex to find the number of hits in a move
 
     # Set up the dataframe for the hits
-    hits_df: pandas.DataFrame = pandas.DataFrame(
+    hits_df: DataFrame = DataFrame(
         columns=[MOVE_NAME, "Damage", "Chip", "Special"]
     )
 
@@ -473,13 +445,14 @@ def parse_hits(combo_frame_data_df: pandas.DataFrame) -> pandas.DataFrame:
         # find a way to keep track of the cell that is being parsed
 
         # Get the series for the current move
-        move_series: pandas.Series = combo_frame_data_df.loc[
+        move_series: Series = combo_frame_data_df.loc[
             combo_frame_data_df[MOVE_NAME] == movestr
         ]
 
         # If the move is a kara, set the damage of the previous move to 0
         if movestr == "kara":
-            logger.debug("Kara cancel detected, setting damage of previous move to 0")
+            logger.debug(
+                "Kara cancel detected, setting damage of previous move to 0")
             # get the location of the move 1 row above the current move
             previous_move_location: int = combo_frame_data_df.index[
                 combo_frame_data_df[MOVE_NAME] == movestr
@@ -512,28 +485,29 @@ def parse_hits(combo_frame_data_df: pandas.DataFrame) -> pandas.DataFrame:
         currentmove_damagelist: list = currentmove_damagestr.split(",")
 
         # clean the damage list and extract the damage, adding a row to the hits dataframe for each hit
-        hits_df = clean_and_extract_damage(hits_df, movestr, currentmove_damagelist)
+        hits_df = clean_and_extract_damage(
+            hits_df, movestr, currentmove_damagelist)
 
     return hits_df
 
 
 def clean_and_extract_damage(
-    hits_df: pandas.DataFrame,
+    hits_df: DataFrame,
     move: str,
     dmg_list: list[str],
-) -> pandas.DataFrame:
+) -> DataFrame:
     """Cleans the damage list and extracts the damage, adding a row to the hits dataframe for each hit
 
     Args:
-        hits_df (pandas.DataFrame): dataframe for hits to be added to
+        hits_df (DataFrame): dataframe for hits to be added to
         move (str): move name
         curr_dmg_list (list[str]): list of damage values for the move to be parsed
 
     Returns:
-        pandas.DataFrame: dataframe with the hits for the move added
+        DataFrame: dataframe with the hits for the move added
     """
 
-    output_df: pandas.DataFrame = hits_df
+    output_df: DataFrame = hits_df
     # Set up the regex to find the number of hits in a move
     num_hits_regex: str = r"(\d+)x(\d+)$"
     move_dmg: list[int] = []
@@ -543,11 +517,12 @@ def clean_and_extract_damage(
         if string == "":
             continue
             # remove whitespace
-        string = re.sub(r"\s", "", string)
+        string: str = re.sub(r"\s", "", string)
         if string == "":
             continue
             # search for a match to the regex pattern for the number of hits and damage
-        numhits_result: re.Match[str] | None = re.search(num_hits_regex, string)
+        numhits_result: re.Match[str] | None = re.search(
+            num_hits_regex, string)
         # if the regex pattern is found, extract the damage and number of hits
         if numhits_result:
             numhits: int = int(numhits_result.group(2))
@@ -555,24 +530,25 @@ def clean_and_extract_damage(
             # add the damage for each hit to the move's damage list
             for _ in range(numhits):
                 move_dmg.append(hitdmg)
-                # add the damage to a temporary pandas.DataFrame
-                temp_df: pandas.DataFrame = pandas.DataFrame(
+                # add the damage to a temporary DataFrame
+                temp_df: DataFrame = DataFrame(
                     [[move, hitdmg, None, None]],
                     columns=output_df.columns,
                 )
-                # append the temporary pandas.DataFrame to the hits pandas.DataFrame
-                output_df = pandas.concat([output_df, temp_df], ignore_index=True)
+                # append the temporary DataFrame to the hits DataFrame
+                output_df = concat(
+                    [output_df, temp_df], ignore_index=True)
 
             # if the regex pattern is not found and the string is not empty, add it directly to the move's damage list
         if string != "" and not re.search(num_hits_regex, string):
             move_dmg.append(int(string))
-            # add the damage to a temporary pandas.DataFrame
-            temp_df = pandas.DataFrame(
+            # add the damage to a temporary DataFrame
+            temp_df = DataFrame(
                 [[move, string, None, None]],
                 columns=output_df.columns,
             )
-            # append the temporary pandas.DataFrame to the hits pandas.DataFrame
-            output_df = pandas.concat([output_df, temp_df], ignore_index=True)
+            # append the temporary DataFrame to the hits DataFrame
+            output_df = concat([output_df, temp_df], ignore_index=True)
     return output_df
 
 
@@ -599,8 +575,6 @@ def extract_values_from_brackets(lst: list[str], string: str) -> tuple[list[str]
         # Remove the regex pattern from the string
         return_string = re.sub(bracket_regex, "", string)
         # Log the list and string
-        logger.debug(lst)
-        logger.debug(return_string)
     # Return the string
     return lst, return_string
 
@@ -629,6 +603,4 @@ def extract_values_from_parentheses(
             lst.append(r.group(0))
         # remove parentheses and string from string
         return_string = re.sub(parentheses_regex, "", string)
-        logger.debug(lst)
-        logger.debug(return_string)
     return lst, return_string

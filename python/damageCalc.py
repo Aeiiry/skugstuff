@@ -1,3 +1,4 @@
+# %%
 """
 Calculate the damage of a combo.
 """
@@ -5,6 +6,7 @@ import sys
 import math
 import pandas as pd
 from constants import *  # NOSONAR
+from pandas import DataFrame, Series, concat, merge, read_csv
 import parseCombo
 import os
 import tabulate
@@ -15,18 +17,21 @@ plt.close("all")
 # Find the data directory, should be one level up from the python directory
 data_dir: str = os.path.abspath(os.path.join(os.getcwd(), os.pardir, "data"))
 
-move_name_alias_df: pd.DataFrame = pd.read_csv(f"{data_dir}\\moveNameAliases.csv")
-full_framedata_df: pd.DataFrame = pd.read_csv(f"{data_dir}\\fullFrameData.csv")
+move_name_alias_df: DataFrame = read_csv(
+    f"{data_dir}\\moveNameAliases.csv")
+full_framedata_df: DataFrame = read_csv(f"{data_dir}\\fullFrameData.csv")
 
 # Remove any whitespace from column names in the full_framedata_df and move_name_alias_df
-def remove_whitespace_from_column_names(df: pd.DataFrame) -> pd.DataFrame:
+
+
+def remove_whitespace_from_column_names(df: DataFrame) -> DataFrame:
     """Remove whitespace from column names in a dataframe.
 
     Args:
-        df (pd.DataFrame): The dataframe to remove whitespace from.
+        df (DataFrame): The dataframe to remove whitespace from.
 
     Returns:
-        pd.DataFrame: The dataframe with whitespace removed from column names.
+        DataFrame: The dataframe with whitespace removed from column names.
     """
     df.columns = df.columns.str.replace(" ", "")
     return df
@@ -62,24 +67,18 @@ def get_damage_scaling_for_hit(hit_num: int, damage: int) -> float:
             DAMAGE_SCALING_FACTOR ** (hit_num - 3),
         )
     else:
-        scaling = max(DAMAGE_SCALING_MIN, DAMAGE_SCALING_FACTOR ** (hit_num - 3))
+        scaling = max(DAMAGE_SCALING_MIN,
+                      DAMAGE_SCALING_FACTOR ** (hit_num - 3))
 
     # round the damage scaling to 3 decimal places
     # scaling: float = round(scaling, 3)
     return scaling
 
 
-def get_combo_damage(combo_frame_data_df: pd.DataFrame) -> int:
-    """Calculate the damage of a combo.
-
-    Args:
-        combo_frame_data_df (pd.DataFrame): The dataframe containing the frame data for the combo.
-
-            Returns:
-        int: The total damage of the combo.
-    """
+def get_combo_damage(combo_frame_data_df: DataFrame) -> DataFrame:
+    """Calculate the damage of a combo"""
     # create a new table to store the damage and undizzy values for each hit
-    table_undizzy_damage: pd.DataFrame = pd.DataFrame(
+    table_undizzy_damage: DataFrame = DataFrame(
         columns=[
             MOVE_NAME,
             HIT_NUMBER,
@@ -90,10 +89,10 @@ def get_combo_damage(combo_frame_data_df: pd.DataFrame) -> int:
         ]
     )
 
-    df_newhits: pd.DataFrame = parseCombo.parse_hits(combo_frame_data_df)
+    df_newhits: DataFrame = parseCombo.parse_hits(combo_frame_data_df)
 
     # add the newHits table to the damageAndUndizzyTable
-    table_undizzy_damage = pd.concat(
+    table_undizzy_damage = concat(
         [table_undizzy_damage, df_newhits], ignore_index=True
     )
     # Add a column for the hit number
@@ -115,7 +114,8 @@ def get_combo_damage(combo_frame_data_df: pd.DataFrame) -> int:
 
     # calculate the real damage for each hit rounded down
     table_undizzy_damage[SCALED_DAMAGE] = table_undizzy_damage.apply(
-        lambda row: math.floor(float(row[DAMAGE]) * float(row[DAMAGE_SCALING])),
+        lambda row: math.floor(
+            float(row[DAMAGE]) * float(row[DAMAGE_SCALING])),
         axis=1,
     )
     # calculate the total damage for the combo for each hit by summing all previous hits
@@ -124,32 +124,29 @@ def get_combo_damage(combo_frame_data_df: pd.DataFrame) -> int:
     ].cumsum()
     # set the hit number to the index of the row
     table_undizzy_damage[HIT_NUMBER] = table_undizzy_damage.index + 1
-    total_damage: int = table_undizzy_damage[SCALED_DAMAGE].sum()
     total_damage_for_moves(table_undizzy_damage)
     # Print just the name, damage, scaled damage columns
     logger.info(
         f"\n{table_undizzy_damage[[MOVE_NAME, DAMAGE, SCALED_DAMAGE, TOTAL_DAMAGE_FOR_MOVE, TOTAL_DAMAGE_FOR_COMBO]]}\n"
     )
 
-    return total_damage
+    return table_undizzy_damage
 
 
-def total_damage_for_moves(damage_undizzy_table: pd.DataFrame) -> pd.DataFrame:
+def total_damage_for_moves(damage_undizzy_table: DataFrame) -> DataFrame:
     """Calculate the total damage for each move in the combo.
 
     Args:
-        damage_undizzy_table (pd.DataFrame): The dataframe containing the damage and undizzy values for each hit.
+        damage_undizzy_table (DataFrame): The dataframe containing the damage and undizzy values for each hit.
 
     Returns:
-        pd.DataFrame: The dataframe containing the damage and undizzy values for each hit with the total damage for each move added.
+        DataFrame: The dataframe containing the damage and undizzy values for each hit with the total damage for each move added.
     """
     # add a new column to the df to store the total damage for each move
     damage_undizzy_table[TOTAL_DAMAGE_FOR_MOVE] = 0
     move_damage: int = 0
     # loop through each row in the df
     for hit in range(len(damage_undizzy_table)):
-
-        move_name: str = damage_undizzy_table.at[hit, MOVE_NAME]
 
         # add the damage to the total damage for the move
         move_damage += damage_undizzy_table.at[hit, SCALED_DAMAGE]
@@ -170,6 +167,8 @@ def total_damage_for_moves(damage_undizzy_table: pd.DataFrame) -> pd.DataFrame:
     return damage_undizzy_table
 
 
+# %%
+
 def skombo() -> None:
     """Temp main function.
     TODO(Aeiry): move to a UI."""
@@ -184,7 +183,7 @@ def skombo() -> None:
 
     for csv in csv_list:
         csv_filename: str = csv.split("\\")[-1].split(".")[0]
-        combo_input_df: pd.DataFrame = pd.read_csv(csv)
+        combo_input_df: DataFrame = read_csv(csv)
 
         expected_damage: int = parseCombo.get_first_value_from_df(
             combo_input_df, EXPECTED_DAMAGE
@@ -202,7 +201,7 @@ def skombo() -> None:
 
         # Create an empty dataframe to hold the combo data
         # Uses the same columns as tempFrameData
-        combo_framedata_df: pd.DataFrame = parseCombo.create_df_copy_columns(
+        combo_framedata_df: DataFrame = parseCombo.create_df_copy_columns(
             full_framedata_df
         )
 
@@ -212,17 +211,27 @@ def skombo() -> None:
         )
 
         # Set the character column in the comboDf to the character name
-        parseCombo.set_column_value(combo_framedata_df, CHARACTER_NAME, character_name)
+        parseCombo.set_column_value(
+            combo_framedata_df, CHARACTER_NAME, character_name)
 
-        logger.debug(f"Combo dataframe:\n{combo_framedata_df}\n")
+        logger.debug(f"Combo dataframe:\n{combo_framedata_df[MOVE_NAME]}\n")
 
         combo_framedata_df = parseCombo.get_frame_data_for_combo(
             combo_framedata_df, full_framedata_df, move_name_alias_df
         )
 
-        combo_framedata_df = get_combo_damage(combo_framedata_df)
+        combo_framedata_df: DataFrame = get_combo_damage(combo_framedata_df)
 
-        damage: int = get_combo_damage(combo_framedata_df)
+        damage: int = combo_framedata_df[SCALED_DAMAGE].sum()
+
+        combo_framedata_df.plot(
+            x=HIT_NUMBER,
+            y=[DAMAGE, TOTAL_DAMAGE_FOR_COMBO],
+            kind="bar",
+            title=csv_filename,
+        )
+
+        logger.debug(f"Combo dataframe:\n{combo_framedata_df.to_string()}\n")
 
         logger.debug(f"Calculated damage: {damage}")
         logger.debug(f"Expected damage: {expected_damage}")
@@ -244,11 +253,13 @@ def skombo() -> None:
         )
 
     # Create a dataframe from the output
-    output_df = pd.DataFrame(output)
+    output_df: DataFrame = DataFrame(output)
 
     logger.info(f"\n{output_df}\n")
 
-    plt.plot(data=output_df.at[0, "CalculatedDamage"], label="Calculated Damage")
+    for combo, pct_diff in zip(output_df["Combo"], output_df["PercentageDifference"]):
+        if pct_diff != "0%":
+            logger.info(f"{combo} has a {pct_diff} difference")
 
 
 def main() -> None:
