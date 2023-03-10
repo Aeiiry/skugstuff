@@ -54,6 +54,16 @@ IGNORED_MOVES: list = [
     "66",
 ]
 
+SEARCH_STATES: dict[str, bool] = {
+    "repeat": False,
+    "start": False,
+    "follow_up": False,
+    "alias": False,
+    "generic": False,
+    "no_strength": False,
+    "not_found": False,
+}
+
 
 def logger_setup() -> logging.Logger:
     """Set up the logger."""

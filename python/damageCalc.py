@@ -126,9 +126,6 @@ def get_combo_damage(combo_frame_data_df: DataFrame) -> DataFrame:
     table_undizzy_damage[HIT_NUMBER] = table_undizzy_damage.index + 1
     total_damage_for_moves(table_undizzy_damage)
     # Print just the name, damage, scaled damage columns
-    logger.info(
-        f"\n{table_undizzy_damage[[MOVE_NAME, DAMAGE, SCALED_DAMAGE, TOTAL_DAMAGE_FOR_MOVE, TOTAL_DAMAGE_FOR_COMBO]]}\n"
-    )
 
     return table_undizzy_damage
 
@@ -224,12 +221,12 @@ def skombo() -> None:
 
         damage: int = combo_framedata_df[SCALED_DAMAGE].sum()
 
-        combo_framedata_df.plot(
+        """combo_framedata_df.plot(
             x=HIT_NUMBER,
             y=[DAMAGE, TOTAL_DAMAGE_FOR_COMBO],
             kind="bar",
             title=csv_filename,
-        )
+        ) """
 
         logger.debug(f"Combo dataframe:\n{combo_framedata_df.to_string()}\n")
 

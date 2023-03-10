@@ -74,34 +74,36 @@ def concatenate_dataframes(
     return concat([dataframe1, dataframe2], ignore_index=True)
 
 
-def find_move_from_name_and_character(move_name: str, character_name: str, df: DataFrame) -> DataFrame:
+def find_move_from_name_and_character(move_name: str, character_name: str, frame_data: DataFrame, check_aliases=False, move_name_alias_df=DataFrame()) -> DataFrame:
     """Find a move from the move name and character name"""
+    # replace regex characters with escaped versions
+    move_name = re.sub(r"([\\^$*+?.()|{}[\]])", r"\\\1", move_name)
+    if check_aliases and not move_name_alias_df.empty:
+        alias_move: str
+        alias_regex: str = rf"^{move_name}$|^{move_name}\n|\n{move_name}$|\n{move_name}\n"
+        alias_search = move_name_alias_df["Value"].str.contains(
+            alias_regex, regex=True, flags=re.IGNORECASE, na=False)
+        if alias_search.any():
+            # Get the key for the alias
+            alias_move = move_name_alias_df["Key"][alias_search].iloc[0]
+            logger.debug(
+                f"Found alias for move [{move_name}]: [{alias_move}]")
+            move_name = alias_move
 
-    # create regex pattern for move name
     name_regex: str = rf"^{move_name}$|^{move_name}\n|\n{move_name}$|\n{move_name}\n"
-
-    # check if character name is in dataframe
-    character_check: Series[bool] = df[CHARACTER_NAME].str.contains(
+    character_check: Series[bool] = frame_data[CHARACTER_NAME].str.contains(
         character_name, flags=re.IGNORECASE)
-
-    # Create a slice of the dataframe with only the moves for the given character, and only the move name and alt names columns
-    character_move_df: DataFrame = df[character_check][[
+    character_df: DataFrame = frame_data[character_check][[
         MOVE_NAME, ALT_NAMES]]
 
-    # check if the move name is in the dataframe
-    move_check: Series[bool] = character_move_df[MOVE_NAME].str.contains(
-        name_regex, flags=re.IGNORECASE)
-    if not move_check.any():
-        # if the move name is not in the dataframe, check if the move name is in the alt names column
-        move_check = character_move_df[ALT_NAMES].str.contains(
-            name_regex, flags=re.IGNORECASE)
-    if move_check.any():
-        # if the move name is in the dataframe, get the move data
-        move_data: DataFrame = df[character_check & move_check]
-        return move_data
+    move_df: DataFrame = character_df[character_df[MOVE_NAME].str.contains(
+        name_regex, flags=re.IGNORECASE)]
+    if move_df.empty:
+        move_df = character_df[character_df[ALT_NAMES].str.contains(
+            name_regex, flags=re.IGNORECASE)]
 
-    # return empty dataframe if no matches are found
-    return DataFrame()
+    move_data: DataFrame = frame_data.loc[move_df.index]
+    return move_data
 
 
 def get_frame_data_for_move(
@@ -117,83 +119,141 @@ def get_frame_data_for_move(
     # check for follow-up moves such as 214HP~P or QCBLP P or 214 MP,P etc
     # regex that matches L, M or H, followed by P or K followed by "~", ",", "+" or " " followed by P or K
 
-    follow_up_move_regex: str = r"(.+[lmh]?[pk])([~\+,\s]){1,3}([pk])"
+    search_state: str = "repeat"
+    data_for_move: DataFrame = DataFrame()
+    data_to_add: DataFrame = DataFrame()
+    searches_performed: dict[str, bool] = SEARCH_STATES.copy()
 
-    follow_up_move_search: re.Match[str] | None = re.search(
-        follow_up_move_regex, move_name, re.IGNORECASE
-    )
+    while search_state:
+        match search_state:
 
-    if follow_up_move_search:
-        logger.debug(f"Move [{move_name}] is a follow-up move")
+            case "start":
+                data_for_move: DataFrame = find_move_from_name_and_character(
+                    move_name, character_name, full_framedata_df
+                )
 
-        data_to_add, move_name = find_base_move_data_for_followup_move(
-            move_name, full_framedata_df, follow_up_move_search, character_name
-        )
-    else:
-        data_to_add: DataFrame = DataFrame()
+            case "alias":
+                logger.debug("Move name not found, checking aliases")
+                data_for_move = find_move_from_name_and_character(
+                    move_name, character_name, full_framedata_df, True, move_name_alias_df
+                )
+            case "generic":
+                generic_move_name_regex: str = r"(.*?)([lmh])([pk])"
+                generic_search: re.Match[str] | None = re.search(
+                    generic_move_name_regex, move_name)
+                if generic_search:
+                    data_for_move = find_generic_move_data(
+                        move_name, full_framedata_df, generic_move_name_regex, character_name
+                    )
+            case "follow_up":
+                follow_up_move_regex: str = r"(.+[lmh]?[pk])([~\+,\s]){1,3}([pk])"
+                follow_up_move_search: re.Match[str] | None = re.search(
+                    follow_up_move_regex, move_name, re.IGNORECASE
+                )
 
-    generic_move_name_regex: str = r"(.*?)([lmh])([pk])"
-    repeat_moves_regex: str = r"\s?[Xx]\s?(\d+)$"
+                if follow_up_move_search:
+                    logger.debug(f"Move [{move_name}] is a follow-up move")
 
-    data_for_move: DataFrame = find_move_from_name_and_character(
-        move_name, character_name, full_framedata_df
-    )
+                    data_to_add = find_base_move_data_for_followup_move(
+                        full_framedata_df, follow_up_move_search, character_name, move_name_alias_df
+                    )
 
-    # if the move name is not in the frame data dataframe, check if it is a repeat move
-    repeat_search: re.Match[str] | None = re.search(
-        repeat_moves_regex, move_name, re.IGNORECASE
-    )
-    if repeat_search:
-        # if the move name contains an x or X followed by a number, it is a repeat move (e.g 5MKx2)
-        logger.debug(f"Move [{move_name}] is a repeat move")
+                    data_for_move = concatenate_dataframes(
+                        data_to_add, data_for_move)
+            case "repeat":
+                repeat_moves_regex: str = r"\s?[Xx]\s?(\d+)$"
+                repeat_search: re.Match[str] | None = re.search(
+                    repeat_moves_regex, move_name, re.IGNORECASE
+                )
+                if repeat_search:
+                    logger.debug(f"Move [{move_name}] is a repeat move")
+                    data_for_move = find_repeat_move_data(
+                        move_name,
+                        full_framedata_df,
+                        repeat_moves_regex,
+                        repeat_search,
+                        character_name,
+                    )
+            case "no_strength":
+                # Check for omission of move strength (e.g. 214MKx2 -> 214Kx2)
+                data_for_move = find_move_no_strength_specified(
+                    move_name, full_framedata_df, character_name, move_name_alias_df)
 
-        # get the move name without the repeat count and set the move name to that
-        data_for_move = find_repeat_move_data(
-            move_name,
-            full_framedata_df,
-            repeat_moves_regex,
-            repeat_search,
-            character_name,
-        )
+            case "not_found":
+                logger.warning(
+                    f"Move [{move_name}] not found for character [{character_name}]")
+                return DataFrame()
+            case "found":
+                logger.debug("Found move")
+                return data_for_move
 
-    # if the move name is not in the frame data dataframe, check if it has an alias
-    if data_for_move.empty:
-
-        logger.debug("Move name not found, checking aliases")
-
-        # try to get the alias move name
-        data_for_move = find_alias_move_data(
-            move_name, full_framedata_df, character_name, move_name_alias_df
-        )
-
-    # if the move name is not in the frame data dataframe, try to find a generic form of the move name in the frame data dataframe
-    elif data_for_move.empty and re.search(generic_move_name_regex, move_name):
-
-        logger.debug(
-            f"Move [{move_name}] not found, checking generic move names for matches"
-        )
-
-        # search for the generic move name in the frame data dataframe
-        data_for_move = find_generic_move_data(
-            move_name, full_framedata_df, generic_move_name_regex, character_name
-        )
-
-    # if the move name is not in the frame data dataframe, log that the move was not found
-    if data_for_move.empty:
-
-        logger.warning(
-            f"Move {move_name} not found for character {character_name}")
-
-        # return an empty dataframe with the same columns as the frame data dataframe
-        data_for_move = DataFrame(columns=full_framedata_df.columns)
-    else:
-        if not data_to_add.empty:
-            # if the move is a follow-up move, add the frame data for the follow-up move to the dataframe
-            data_for_move = concat([data_for_move, data_to_add])
-
-    # return the dataframe with the move data
-    logger.debug(f"Returning data for move [{move_name}]\n")
+        search_state, searches_performed = update_search_state(
+            search_state, data_for_move, searches_performed)
     return data_for_move
+
+
+def update_search_state(
+        search_state: str, data_for_move: DataFrame, searches_performed: dict
+) -> tuple[str, dict]:
+    """ Update the search state, setting it to the next state that has not been performed
+    Update the searches performed dictionary to reflect the current search state"""
+    searches_performed[search_state] = True
+    new_search_state = search_state
+    # Set the search state to the next state that has not been performed
+    if not data_for_move.empty and search_state != "start":
+        new_search_state = "found"
+        return new_search_state, searches_performed
+
+    if search_state == "no_strength":
+        # Reset search state to start
+        search_state = "start"
+        searches_performed = SEARCH_STATES.copy()
+        searches_performed["no_strength"] = True
+        return search_state, searches_performed
+
+    for state in SEARCH_STATES:
+        if not searches_performed[state]:
+            new_search_state: str = state
+            break
+    return new_search_state, searches_performed
+
+
+def find_move_no_strength_specified(move_name, full_framedata_df, character_name, move_name_alias_df):
+    """Check for omission of move strength (e.g. 214K -> 214MK)
+    returns a dataframe of the frame data for the move if it exists, otherwise an empty dataframe
+    by default, the move strength is assumed to be the highest strength available for the move"""
+    possible_move_data: DataFrame = DataFrame()
+    strength_regex: str = r"(.*)([lmh])?([pk])[\s,~+Xx].*"
+    strength_search: re.Match[str] | None = re.search(
+        strength_regex, move_name, re.IGNORECASE)
+    # if group 1 is empty but group 2 is not, then the move strength was omitted
+    if strength_search and not strength_search.group(2) and strength_search.group(3):
+        # Find possible matches for each strength
+        for strength in ["L", "M", "H"]:
+            possible_base_move_name: str = f"{strength_search.group(1)}{strength}{strength_search.group(3)}"
+            # append the frame data for the possible base move to the list if it exists
+
+            possible_move = find_move_from_name_and_character(
+                possible_base_move_name, character_name, full_framedata_df
+            )
+            if possible_move.empty:
+                possible_move = find_move_from_name_and_character(
+                    possible_base_move_name, character_name, full_framedata_df, True, move_name_alias_df
+                )
+            if not possible_move.empty:
+                possible_move_data = concat(
+                    [possible_move_data, possible_move])
+
+        if not possible_move_data.empty:
+            logger.debug(
+                f"Found {len(possible_move_data)} possible base moves")
+            # add the highest strength version of the move to the data
+            data_for_base_move = possible_move_data.tail(1)
+            logger.debug(
+                f"Adding highest strength version {data_for_base_move[MOVE_NAME].iloc[0]}")
+            return data_for_base_move
+
+    return DataFrame()
 
 
 def find_generic_move_data(
@@ -228,37 +288,6 @@ def find_generic_move_data(
             f"Data for move [{move_name}] found as [{generic_move_name}]")
         data_for_move: DataFrame = find_move_from_name_and_character(
             generic_move_name, character_name, full_framedata_df
-        )
-    else:
-        data_for_move = DataFrame()
-
-    return data_for_move
-
-
-def find_alias_move_data(
-    move_name: str,
-    full_framedata_df: DataFrame,
-    character_name: str,
-    move_name_alias_df: DataFrame,
-) -> DataFrame:
-    """Attempt to find the alias move name in the frame data dataframe
-
-    Args:
-        move_name (str): Move name
-        full_framedata_df (DataFrame): Frame data dataframe
-        character_name (str): Character name
-        move_name_alias_df (DataFrame): Dataframe with move name aliases
-
-    Returns:
-        DataFrame: Dataframe with move data, or empty dataframe if move not found
-    """
-    move_name_alias: str = get_alias_move(move_name, move_name_alias_df)
-
-    # if the alias move name is not empty, get the frame data for the alias move name
-    if move_name_alias != "":
-        logger.debug(f"Alias for [{move_name}] found as [{move_name_alias}]")
-        data_for_move: DataFrame = find_move_from_name_and_character(
-            move_name_alias, character_name, full_framedata_df
         )
     else:
         data_for_move = DataFrame()
@@ -307,8 +336,10 @@ def find_repeat_move_data(
         logger.debug(f"Found data for move [{move_name_without_repeat_count}]")
 
         for i in range(int(repeat_search.group(1)) - 1) if repeat_search else range(0):
+            base_move_index: int = full_framedata_df.index[
+                full_framedata_df[MOVE_NAME] == move_name_without_repeat_count
+            ].tolist()[0]
 
-            base_move_index: int = data_for_move.iat[0, 0]
             next_move_in_sequence: Series = full_framedata_df.iloc[
                 1 + i + base_move_index
             ]
@@ -323,51 +354,23 @@ def find_repeat_move_data(
 
 
 def find_base_move_data_for_followup_move(
-    move_name: str,
     full_framedata_df: DataFrame,
     follow_up_move_search: re.Match[str],
     character_name: str,
-) -> tuple[DataFrame, str]:
-    """Attempt to find the frame data for a follow-up move, e.g. 214MKx2
-
-    Args:
-        move_name (str): Move name
-        full_framedata_df (DataFrame): Frame data dataframe
-        follow_up_move_search (re.Match[str]): Match object for the follow-up move
-        character_name (str): Character name
-
-    Returns:
-        tuple[DataFrame, str]: Dataframe with move data, or empty dataframe if move not found, and the name of the base move
-    """
+    move_name_alias_df: DataFrame,
+) -> DataFrame:
+    """Attempt to find the frame data for a follow-up move, e.g. 214MKx2"""
     # if the move is a follow-up move, get the frame data for the follow-up move and return the name of the base move and the frame data for the follow-up move
     base_move_name: str = follow_up_move_search.group(1)
-    data_for_move: DataFrame = find_move_from_name_and_character(
-        move_name, character_name, full_framedata_df
+    data_for_base_move: DataFrame = find_move_from_name_and_character(
+        base_move_name, character_name, full_framedata_df, True, move_name_alias_df
     )
 
-    return data_for_move, base_move_name
+    if data_for_base_move.empty:
+        logger.warning(
+            f"Could not find base move data for follow-up move [{base_move_name}]")
 
-
-def get_alias_move(move_name: str, move_name_alias_df: DataFrame) -> str:
-    """Get the alias move name for the given move name
-
-    Args:
-        move_name (str): Move name
-        move_name_alias_df (DataFrame): Dataframe with move name aliases
-
-    Returns:
-        str: Alias move name, or empty string if no alias found
-    """
-
-    # get all move name aliases that contain the given move name
-    alias_df: DataFrame = move_name_alias_df[
-        move_name_alias_df["Value"].str.contains(
-            move_name, na=False, flags=re.IGNORECASE
-        )
-    ]
-
-    # return the alias if it exists
-    return alias_df["Key"].iloc[0] if not alias_df.empty else ""
+    return data_for_base_move
 
 
 def get_frame_data_for_combo(
@@ -413,6 +416,19 @@ def get_frame_data_for_combo(
                 f"Ignoring move [{move}], it is in the ignored moves list")
             continue
 
+        if move.lower() == "kara":
+            logger.debug(
+                "Move name is kara, assuming previous move was kara cancelled so setting its damage to 0")
+            combo_framedata_df.at[len(combo_framedata_df) - 1, DAMAGE] = "0"
+            # Add an empty row to the combo frame data DataFrame with the name kara
+
+            combo_framedata_df = concat(
+                [combo_framedata_df, DataFrame(
+                    columns=full_framedata_df.columns)]
+            )
+
+            continue
+
         move_framedata: DataFrame = get_frame_data_for_move(
             move, full_framedata_df, character_name, move_name_alias_df
         )
@@ -448,18 +464,6 @@ def parse_hits(combo_frame_data_df: DataFrame) -> DataFrame:
         move_series: Series = combo_frame_data_df.loc[
             combo_frame_data_df[MOVE_NAME] == movestr
         ]
-
-        # If the move is a kara, set the damage of the previous move to 0
-        if movestr == "kara":
-            logger.debug(
-                "Kara cancel detected, setting damage of previous move to 0")
-            # get the location of the move 1 row above the current move
-            previous_move_location: int = combo_frame_data_df.index[
-                combo_frame_data_df[MOVE_NAME] == movestr
-            ][0]
-            # set the damage of the previous move to 0
-            combo_frame_data_df.loc[previous_move_location, "Damage"] = 0
-            continue
 
         # If the move does not have any damage, continue to the next move
         if move_series["Damage"].isnull().values.any():
