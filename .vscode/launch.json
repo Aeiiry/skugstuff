@@ -5,6 +5,15 @@
    "version": "0.2.0",
    "configurations": [
       {
+         "name": "damageCalc.py",
+         "type": "python",
+         "request": "launch",
+         "justMyCode": true,
+         "program": "${workspaceFolder}/python/damageCalc.py",
+         // one directory up from the current file
+         "cwd": "${fileDirname}/..",
+      },
+      {
          "name": "Python: Current File",
          "type": "python",
          "request": "launch",
