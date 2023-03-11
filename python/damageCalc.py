@@ -2,16 +2,19 @@
 Calculate the damage of a combo.
 """
 from __future__ import annotations
+
+import os
 import math
+from typing import Any
+
 import pandas as pd
+from pandas import DataFrame, Series
+
+import parseCombo
 import constants as const
 from constants import (
     logger,
 )
-from pandas import DataFrame, Series
-from typing import Any
-import parseCombo
-import os
 
 # flake8: noqa: E501
 # pylance: reportUnknownMemberType=false
@@ -19,10 +22,8 @@ import os
 # attempt to get the data directory it is in the parent directory
 data_dir: str = os.path.join(os.path.dirname(__file__), "..", "data")
 
-move_name_alias_df: DataFrame = pd.read_csv(
-    f"{data_dir}\\moveNameAliases.csv")
-full_framedata_df: DataFrame = pd.read_csv(
-    f"{data_dir}\\fullFrameData.csv")
+move_name_alias_df: DataFrame = pd.read_csv(f"{data_dir}\\moveNameAliases.csv")
+full_framedata_df: DataFrame = pd.read_csv(f"{data_dir}\\fullFrameData.csv")
 
 
 def remove_whitespace_from_column_names(df: DataFrame) -> DataFrame:
@@ -31,7 +32,7 @@ def remove_whitespace_from_column_names(df: DataFrame) -> DataFrame:
     return df
 
 
-def get_damage_scaling_for_hit(hit_num: int, damage: int) -> float: # type: ignore
+def get_damage_scaling_for_hit(hit_num: int, damage: int) -> float:  # type: ignore
     """Get the damage scaling for a hit."""
 
     damage: int = int(damage)
@@ -39,7 +40,9 @@ def get_damage_scaling_for_hit(hit_num: int, damage: int) -> float: # type: igno
     # check if the damage is 0 -0 or none
     if damage in [0, -1]:
         # return the damage scaling for the hit before
-        return max(const.DAMAGE_SCALING_MIN, const.DAMAGE_SCALING_FACTOR ** (hit_num - 4))
+        return max(
+            const.DAMAGE_SCALING_MIN, const.DAMAGE_SCALING_FACTOR ** (hit_num - 4)
+        )
 
     if hit_num <= 3:
         return 1
@@ -50,8 +53,9 @@ def get_damage_scaling_for_hit(hit_num: int, damage: int) -> float: # type: igno
             const.DAMAGE_SCALING_FACTOR ** (hit_num - 3),
         )
     else:
-        scaling = max(const.DAMAGE_SCALING_MIN,
-                      const.DAMAGE_SCALING_FACTOR ** (hit_num - 3))
+        scaling = max(
+            const.DAMAGE_SCALING_MIN, const.DAMAGE_SCALING_FACTOR ** (hit_num - 3)
+        )
 
     # round the damage scaling to 3 decimal places
     # scaling: float = round(scaling, 3)
@@ -69,7 +73,7 @@ def get_combo_damage(combo_frame_data_df: DataFrame) -> DataFrame:
             const.SCALED_DAMAGE,
             const.UNDIZZY,
             const.TOTAL_DAMAGE_FOR_MOVE,
-            const.TOTAL_DAMAGE_FOR_COMBO
+            const.TOTAL_DAMAGE_FOR_COMBO,
         ]
     )
 
@@ -91,27 +95,30 @@ def get_combo_damage(combo_frame_data_df: DataFrame) -> DataFrame:
         # Check if the damage is 0
         if int(move.Damage) == 0:
             # If it is 0, set the hit number to 0
-            table_undizzy_damage.at[move[0],
-                                    const.HIT_NUMBER] = 0
+            table_undizzy_damage.at[move[0], const.HIT_NUMBER] = 0
         else:
             # If it is not 0, increment the hit number by 1
             # Account for the fact that the index starts at 0 and avoid index out of range errors
             if move[0] == 0:
-                table_undizzy_damage.at[move[0],
-                                        const.HIT_NUMBER] = 1
+                table_undizzy_damage.at[move[0], const.HIT_NUMBER] = 1
             else:
-                table_undizzy_damage.at[move[0],
-                                        const.HIT_NUMBER] = table_undizzy_damage.at[move[0] - 1, const.HIT_NUMBER] + 1
+                table_undizzy_damage.at[move[0], const.HIT_NUMBER] = (
+                    table_undizzy_damage.at[move[0] - 1, const.HIT_NUMBER] + 1
+                )
 
     # add the damage scaling for each hit, based on the hit number column and the damage column
     table_undizzy_damage[const.DAMAGE_SCALING] = table_undizzy_damage.apply(
-        lambda row: get_damage_scaling_for_hit(row[const.HIT_NUMBER], row[const.DAMAGE]), axis=1
+        lambda row: get_damage_scaling_for_hit(
+            row[const.HIT_NUMBER], row[const.DAMAGE]
+        ),
+        axis=1,
     )
 
     # calculate the real damage for each hit rounded down
     table_undizzy_damage[const.SCALED_DAMAGE] = table_undizzy_damage.apply(
         lambda row: math.floor(
-            float(row[const.DAMAGE]) * float(row[const.DAMAGE_SCALING])),
+            float(row[const.DAMAGE]) * float(row[const.DAMAGE_SCALING])
+        ),
         axis=1,
     )
     # calculate the total damage for the combo for each hit by summing all previous hits
@@ -127,27 +134,18 @@ def get_combo_damage(combo_frame_data_df: DataFrame) -> DataFrame:
 
 
 def total_damage_for_moves(damage_undizzy_table: DataFrame) -> DataFrame:
-    """Calculate the total damage for each move in the combo.
-
-    Args:
-        damage_undizzy_table (DataFrame): The dataframe containing the damage and undizzy values for each hit.
-
-    Returns:
-        DataFrame: The dataframe containing the damage and undizzy values for each hit with the total damage for each move added.
-    """
+    """Calculate the total damage for each move in the combo."""
     # add a new column to the df to store the total damage for each move
     damage_undizzy_table[const.TOTAL_DAMAGE_FOR_MOVE] = 0
     move_damage: int = 0
     # loop through each row in the df
     for hit in range(len(damage_undizzy_table)):
-
         # add the damage to the total damage for the move
         move_damage += damage_undizzy_table.at[hit, const.SCALED_DAMAGE]
 
         # if it's not the last row
         if hit < len(damage_undizzy_table) - 1:
-            damage_undizzy_table.at[hit,
-                                    const.TOTAL_DAMAGE_FOR_MOVE] = move_damage
+            damage_undizzy_table.at[hit, const.TOTAL_DAMAGE_FOR_MOVE] = move_damage
 
             # if the next hit is a different move
             if (
@@ -156,13 +154,13 @@ def total_damage_for_moves(damage_undizzy_table: DataFrame) -> DataFrame:
             ):
                 move_damage = 0
         else:
-            damage_undizzy_table.at[hit,
-                                    const.TOTAL_DAMAGE_FOR_MOVE] = move_damage
+            damage_undizzy_table.at[hit, const.TOTAL_DAMAGE_FOR_MOVE] = move_damage
 
     return damage_undizzy_table
 
 
 # %%
+
 
 def skombo() -> None:
     """Temp main function.
@@ -207,10 +205,10 @@ def skombo() -> None:
 
         # Set the character column in the comboDf to the character name
         parseCombo.set_column_value(
-            combo_framedata_df, const.CHARACTER_NAME, character_name)
+            combo_framedata_df, const.CHARACTER_NAME, character_name
+        )
 
-        logger.debug(
-            f"Combo dataframe:\n{combo_framedata_df[const.MOVE_NAME]}\n")
+        logger.debug(f"Combo dataframe:\n{combo_framedata_df[const.MOVE_NAME]}\n")
 
         combo_framedata_df = parseCombo.get_frame_data_for_combo(
             combo_framedata_df, full_framedata_df, move_name_alias_df
@@ -252,7 +250,8 @@ def skombo() -> None:
     output_df: DataFrame = DataFrame(output)
 
     logger.info(f"\n{output_df}\n")
-    for combo, pct_diff in zip(output_df["Combo"], output_df["PercentageDifference"]): # type: ignore
+
+    for combo, pct_diff in zip(output_df["Combo"], output_df["PercentageDifference"]):  # type: ignore
         if pct_diff != "0%":
             logger.info(f"{combo} has a {pct_diff} difference")
 
@@ -264,5 +263,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-
     main()

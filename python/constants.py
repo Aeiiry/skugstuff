@@ -75,8 +75,7 @@ def logger_setup() -> logging.Logger:
         "[%(relativeCreated)dms] %(filename)s:%(lineno)d:%(funcName)s | %(levelname)s | %(message)s"
     )
 
-    console_format: logging.Formatter = logging.Formatter(
-        "%(levelname)s | %(message)s")
+    console_format: logging.Formatter = logging.Formatter("%(levelname)s | %(message)s")
 
     # Console handler
     console_handler = logging.StreamHandler()
@@ -85,14 +84,16 @@ def logger_setup() -> logging.Logger:
 
     # Verbose log handler
     verbose_log_handler: logging.FileHandler = logging.FileHandler(
-        "skug_combo.log", mode="w")
+        "skug_combo.log", mode="w"
+    )
 
     verbose_log_handler.setFormatter(file_format)
     verbose_log_handler.setLevel(LOG_LEVEL_FILE)
 
     # Info log handler
     info_log_handler: logging.FileHandler = logging.FileHandler(
-        "skug_combo_info.log", mode="w")
+        "skug_combo_info.log", mode="w"
+    )
 
     info_log_handler.setFormatter(file_format)
     info_log_handler.setLevel(logging.INFO)
