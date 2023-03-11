@@ -10,6 +10,7 @@ import pandas as pd
 
 # flake8: noqa: E501
 
+
 def get_csv_list(path: str) -> list[str]:
     """Returns a list of all csv files in a given path with their relative path"""
     return [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".csv")]
@@ -29,13 +30,7 @@ def get_first_value_from_df(df: DataFrame, key: str) -> typing.Any:
 
 
 def set_column_value(df: DataFrame, column: str, value: str) -> None:
-    """Set an entire column to a given value
-
-    Args:
-        df (DataFrame): dataframe to set the column value in
-        column (str): column to set the value in
-        value (str): value to set the column to
-    """
+    """Set an entire column to a given value"""
     logger.debug(f"Setting {column} to {value}")
     df[column] = value
 
@@ -61,10 +56,11 @@ def concatenate_dataframes(
     return new_df
 
 
-def find_move_from_name_and_character(move_name: str, character_name: str, frame_data: DataFrame, check_aliases: bool=False, move_name_alias_df: DataFrame=DataFrame()) -> DataFrame:
+def find_move_from_name_and_character(move_name: str, character_name: str, frame_data: DataFrame, check_aliases: bool = False, move_name_alias_df: DataFrame = DataFrame()) -> DataFrame:
     """Find a move from the move name and character name"""
     # replace regex characters with escaped versions
-    move_name_escaped: str = re.sub(r"([\\^$*+?.()|{}[\]])", r"\\\1", move_name)
+    move_name_escaped: str = re.sub(
+        r"([\\^$*+?.()|{}[\]])", r"\\\1", move_name)
     if check_aliases and not move_name_alias_df.empty:
         alias_move: str
         alias_regex: str = rf"^{move_name_escaped}$|^{move_name_escaped}\n|\n{move_name_escaped}$|\n{move_name_escaped}\n"
@@ -113,24 +109,25 @@ def get_frame_data_for_move(
     while search_state:
         match search_state:
 
+            case "repeat":
+                repeat_moves_regex: str = r"\s?[Xx]\s?(\d+)$"
+                repeat_search: re.Match[str] | None = re.search(
+                    repeat_moves_regex, move_name, re.IGNORECASE
+                )
+                if repeat_search:
+                    logger.debug(f"Move [{move_name}] is a repeat move")
+                    data_for_move = find_repeat_move_data(
+                        move_name,
+                        full_framedata_df,
+                        repeat_moves_regex,
+                        repeat_search,
+                        character_name,
+                    )
             case "start":
                 data_for_move: DataFrame = find_move_from_name_and_character(
                     move_name, character_name, full_framedata_df
                 )
 
-            case "alias":
-                logger.debug("Move name not found, checking aliases")
-                data_for_move = find_move_from_name_and_character(
-                    move_name, character_name, full_framedata_df, True, move_name_alias_df
-                )
-            case "generic":
-                generic_move_name_regex: str = r"(.*?)([lmh])([pk])"
-                generic_search: re.Match[str] | None = re.search(
-                    generic_move_name_regex, move_name)
-                if generic_search:
-                    data_for_move = find_generic_move_data(
-                        move_name, full_framedata_df, generic_move_name_regex, character_name
-                    )
             case "follow_up":
                 follow_up_move_regex: str = r"(.+[lmh]?[pk])([~\+,\s]){1,3}([pk])"
                 follow_up_move_search: re.Match[str] | None = re.search(
@@ -146,19 +143,18 @@ def get_frame_data_for_move(
 
                     data_for_move = concatenate_dataframes(
                         data_to_add, data_for_move)
-            case "repeat":
-                repeat_moves_regex: str = r"\s?[Xx]\s?(\d+)$"
-                repeat_search: re.Match[str] | None = re.search(
-                    repeat_moves_regex, move_name, re.IGNORECASE
+            case "alias":
+                logger.debug("Move name not found, checking aliases")
+                data_for_move = find_move_from_name_and_character(
+                    move_name, character_name, full_framedata_df, True, move_name_alias_df
                 )
-                if repeat_search:
-                    logger.debug(f"Move [{move_name}] is a repeat move")
-                    data_for_move = find_repeat_move_data(
-                        move_name,
-                        full_framedata_df,
-                        repeat_moves_regex,
-                        repeat_search,
-                        character_name,
+            case "generic":
+                generic_move_name_regex: str = r"(.*?)([lmh])([pk])"
+                generic_search: re.Match[str] | None = re.search(
+                    generic_move_name_regex, move_name)
+                if generic_search:
+                    data_for_move = find_generic_move_data(
+                        move_name, full_framedata_df, generic_move_name_regex, character_name
                     )
             case "no_strength":
                 # Check for omission of move strength (e.g. 214MKx2 -> 214Kx2)
@@ -206,7 +202,7 @@ def update_search_state(
     return new_search_state, searches_performed
 
 
-def find_move_no_strength_specified(move_name: str, full_framedata_df: DataFrame, character_name: str, move_name_alias_df: DataFrame):
+def find_move_no_strength_specified(move_name: str, full_framedata_df: DataFrame, character_name: str, move_name_alias_df: DataFrame) -> DataFrame:
     """Check for omission of move strength (e.g. 214K -> 214MK)
     returns a dataframe of the frame data for the move if it exists, otherwise an empty dataframe
     by default, the move strength is assumed to be the highest strength available for the move"""
@@ -221,7 +217,7 @@ def find_move_no_strength_specified(move_name: str, full_framedata_df: DataFrame
             possible_base_move_name: str = f"{strength_search.group(1)}{strength}{strength_search.group(3)}"
             # append the frame data for the possible base move to the list if it exists
 
-            possible_move = find_move_from_name_and_character(
+            possible_move: DataFrame = find_move_from_name_and_character(
                 possible_base_move_name, character_name, full_framedata_df
             )
             if possible_move.empty:
@@ -236,7 +232,7 @@ def find_move_no_strength_specified(move_name: str, full_framedata_df: DataFrame
             logger.debug(
                 f"Found {len(possible_move_data)} possible base moves")
             # add the highest strength version of the move to the data
-            data_for_base_move = possible_move_data.tail(1)
+            data_for_base_move: DataFrame = possible_move_data.tail(1)
             logger.debug(
                 f"Adding highest strength version {data_for_base_move[const.MOVE_NAME].iloc[0]}")
             return data_for_base_move
@@ -252,7 +248,7 @@ def find_generic_move_data(
 ) -> DataFrame:
     """Attempt to find a generic form of the move name in the frame data dataframe"""
 
-    match= re.search(
+    match: re.Match[str] | None = re.search(
         generic_move_name_regex, move_name, flags=re.IGNORECASE
     )
 
@@ -310,7 +306,8 @@ def find_repeat_move_data(
             next_move_in_sequence: Series[Any] = full_framedata_df.iloc[
                 1 + i + base_move_index
             ]
-            logger.debug(f"Next move: {next_move_in_sequence[const.MOVE_NAME]}")
+            logger.debug(
+                f"Next move: {next_move_in_sequence[const.MOVE_NAME]}")
             data_for_move = pd.concat(
                 [data_for_move, next_move_in_sequence.to_frame().T])
     else:
@@ -377,7 +374,8 @@ def get_frame_data_for_combo(
         if move.lower() == "kara":
             logger.debug(
                 "Move name is kara, assuming previous move was kara cancelled so setting its damage to 0")
-            combo_framedata_df.at[len(combo_framedata_df) - 1, const.DAMAGE] = "0"
+            combo_framedata_df.at[len(
+                combo_framedata_df) - 1, const.DAMAGE] = "0"
             # Add an empty row to the combo frame data DataFrame with the name kara
 
             combo_framedata_df = pd.concat(
