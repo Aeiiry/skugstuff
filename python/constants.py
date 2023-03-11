@@ -1,6 +1,8 @@
-"""Skug combot constants."""
+"""Skug combo constants."""
 from typing import Literal
 import logging
+
+# flake8: noqa: E501
 
 # Column names
 CHARACTER_NAME: Literal["Character"] = "Character"
@@ -27,7 +29,7 @@ DAMAGE_SCALING_FACTOR: float = 0.875
 # Columns: MoveType, Undizzy
 # MoveType: Light, Medium, Heavy, Special, Throws+Supers
 # Undizzy: 15, 30, 40, 30, 0
-UNDIZZY_DICT: dict = {
+UNDIZZY_DICT: dict[str, int] = {
     "Light": 15,
     "Medium": 30,
     "Heavy": 40,
@@ -39,7 +41,7 @@ LOG_LEVEL_CONSOLE: int = logging.INFO
 LOG_LEVEL_FILE: int = logging.DEBUG
 
 # Move names to automatically ignore
-IGNORED_MOVES: list = [
+IGNORED_MOVES: list[str] = [
     "adc",
     "air dash cancel",
     "air dash",
@@ -77,7 +79,7 @@ def logger_setup() -> logging.Logger:
         "%(levelname)s | %(message)s")
 
     # Console handler
-    console_handler: logging.StreamHandler = logging.StreamHandler()
+    console_handler = logging.StreamHandler()
     console_handler.setFormatter(console_format)
     console_handler.setLevel(LOG_LEVEL_CONSOLE)
 
