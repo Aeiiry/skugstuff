@@ -262,7 +262,7 @@ RE-ENTRY
 RE-ENTRY X1
 RE ENTRY X1
 DIVEKICK X1
-DIVEKICK",Mid,-,400 (100),(2.5%) 7.5%,+11,-5,15,Until ground,24,33,20,13 (10 on block),-,"- Annie does up to three divekicks, with the strength determining the angle of her dive.
+DIVEKICK",Mid,-,300 (100),(2.5%) 7.5%,+11,-5,15,Until ground,24,33,20,13 (10 on block),-,"- Annie does up to three divekicks, with the strength determining the angle of her dive.
 - L versions dives at a 30° angle, M at a 45° angle, and H at a 50° angle (rough estimates).
 - Not a rekka and will do the next followup in the chain. After the second dive, only the third dive will happen afterwards.
 - See also RE ENTRY X2, RE ENTRY X3.",https://wiki.gbl.gg/images/6/63/SG_ann_jqcfk_hb.png,https://wiki.gbl.gg/images/6/6c/SG_ann_jqcfkx1_fd.png
@@ -315,7 +315,7 @@ JUMPING 236 K,K
 JUMPING 236+K,K
 JUMPING QCFK,K
 JUMPING QCF K,K
-JUMPING QCF+K,K",Mid,-,500 (100),(2.5%) 7.5%,+11,-5,15,Until ground,24,33,20,13 (10 on block),-,"- Annie does up to three divekicks, with the strength determining the angle of her dive.
+JUMPING QCF+K,K",Mid,-,400 (100),(2.5%) 7.5%,+11,-5,15,Until ground,24,33,20,13 (10 on block),-,"- Annie does up to three divekicks, with the strength determining the angle of her dive.
 - L versions dives at a 30° angle, M at a 45° angle, and H at a 50° angle (rough estimates).
 - Not a rekka and will do the next followup in the chain. After the second dive, only the third dive will happen afterwards. 
 - See also RE ENTRY, RE ENTRY X3.",https://wiki.gbl.gg/images/6/63/SG_ann_jqcfk_hb.png,https://wiki.gbl.gg/images/c/c6/SG_ann_jqcfkx2_fd.png
@@ -368,7 +368,7 @@ JUMPING 236 K,K,K
 JUMPING 236+K,K,K
 JUMPING QCFK,K,K
 JUMPING QCF K,K,K
-JUMPING QCF+K,K,K",Mid,-,700 (200),(2.5%) 7.5%,KD,-8 (At Best),15,Until ground,24,33,20,13 (10 on block),-,"- Annie does up to three divekicks, with the strength determining the angle of her dive.
+JUMPING QCF+K,K,K",Mid,-,800 (200),(2.5%) 7.5%,KD,-8 (At Best),15,Until ground,24,33,20,13 (10 on block),-,"- Annie does up to three divekicks, with the strength determining the angle of her dive.
 - L versions dives at a 30° angle, M at a 45° angle, and H at a 50° angle (rough estimates).
 - Not a rekka and will do the next followup in the chain. After the second dive, only the third dive will happen afterwards.
 - See also RE ENTRY, RE ENTRY X2.",https://wiki.gbl.gg/images/6/63/SG_ann_jqcfk_hb.png,https://wiki.gbl.gg/images/8/8f/SG_ann_jqcfx3_fd.png
