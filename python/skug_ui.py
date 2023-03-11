@@ -5,11 +5,12 @@ import logging
 import sys
 import os
 import tkinter as tk
-from tkinter import font
-from typing import Any, Literal
+from typing import Literal
 import pyglet
 from pyglet.font.base import Font
 import fontTools.ttLib as ttLib
+
+# flake8: noqa: E501
 
 # initialise logging
 logging.basicConfig(level=logging.DEBUG)
@@ -72,7 +73,7 @@ def get_font_name(font: ttLib.TTFont) -> tuple[str, str]:
 
 
 def create_home_canvas(window: tk.Tk) -> tk.Canvas:
-    """ Create the home screen canvas"""
+    """Create the home screen canvas"""
     home_canvas: tk.Canvas = tk.Canvas(window, bg="white", borderwidth=2)
 
     # create the home screen frames
@@ -144,10 +145,6 @@ def main() -> None:
         path="data/fonts/AtkinsonHyperlegible/Web Fonts/TTF",
         font_name="Atkinson-Hyperlegible-Regular-102.ttf",
     )
-
-    # set default style and size for fonts
-    readable_font = (readable_font.name, 30)
-    skug_font = (skug_font.name, 30)
 
     # add the fonts to the window
     window.option_add("*Font", skug_font)

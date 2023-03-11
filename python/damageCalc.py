@@ -12,9 +12,7 @@ from pandas import DataFrame, Series
 
 import parseCombo
 import constants as const
-from constants import (
-    logger,
-)
+from constants import logger
 
 # flake8: noqa: E501
 # pylance: reportUnknownMemberType=false

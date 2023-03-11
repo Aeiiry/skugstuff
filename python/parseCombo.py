@@ -106,7 +106,7 @@ def get_frame_data_for_move(
     # check for follow-up moves such as 214HP~P or QCBLP P or 214 MP,P etc
     # regex that matches L, M or H, followed by P or K followed by "~", ",", "+" or " " followed by P or K
 
-    search_state: str = "repeat"
+    search_state: str | None = "repeat"
     data_for_move: DataFrame = DataFrame()
     searches_performed: dict[str, bool] = const.SEARCH_STATES.copy()
 
@@ -177,13 +177,13 @@ def get_frame_data_for_move(
 
             case "found":
                 logger.debug("Found move")
-                search_state = ""
+                search_state = None
                 return data_for_move
             case "not_found":
                 logger.warning(
                     f"Move [{move_name}] not found for character [{character_name}]"
                 )
-                search_state = ""
+                search_state = None
                 return DataFrame()
             case _:
                 search_state = "not_found"
@@ -396,14 +396,13 @@ def get_frame_data_for_combo(
 
         if move.lower() == "kara":
             logger.debug(
-                "Move name is kara, assuming previous move was kara cancelled so setting its damage to 0"
+                "Move name is kara, assuming previous move was kara cancelled so removing it from the combo"
             )
-            combo_framedata_df.at[len(combo_framedata_df) - 1, const.DAMAGE] = "0"
-            # Add an empty row to the combo frame data DataFrame with the name kara
-
-            combo_framedata_df = pd.concat(
-                [combo_framedata_df, DataFrame(columns=full_framedata_df.columns)]
+            logger.debug(
+                f"Move removed: {combo_framedata_df.iloc[-1][const.MOVE_NAME]}"
             )
+            # If the move is kara, assume the previous move was kara cancelled and remove it from the combo
+            combo_framedata_df = combo_framedata_df.iloc[:-1]
 
             continue
 
