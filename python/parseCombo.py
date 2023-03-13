@@ -8,31 +8,11 @@ from constants import logger
 from pandas import DataFrame, Series
 import pandas as pd
 
+
 # flake8: noqa: E501
-
-
 def get_csv_list(path: str) -> list[str]:
     """Returns a list of all csv files in a given path with their relative path"""
     return [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".csv")]
-
-
-def create_df_copy_columns(df: DataFrame) -> DataFrame:
-    """Creates a copy of a dataframe with the same columns"""
-    copy_df: DataFrame = DataFrame(columns=df.columns)
-
-    return copy_df
-
-
-def get_first_value_from_df(df: DataFrame, key: str) -> typing.Any:
-    """Gets the first value from a dataframe for a given key"""
-    value: typing.Any = df[key][0]
-    return value
-
-
-def set_column_value(df: DataFrame, column: str, value: str) -> None:
-    """Set an entire column to a given value"""
-    logger.debug(f"Setting {column} to {value}")
-    df[column] = value
 
 
 def split_columns(df: DataFrame, column_name: str, seperator: str) -> DataFrame:
@@ -46,10 +26,65 @@ def split_columns(df: DataFrame, column_name: str, seperator: str) -> DataFrame:
     return splitdf
 
 
-def concatenate_dataframes(dataframe1: DataFrame, dataframe2: DataFrame) -> DataFrame:
-    """Concatenate two dataframes"""
-    new_df: DataFrame = pd.concat([dataframe1, dataframe2], ignore_index=True)
-    return new_df
+def character_specific_move_data(
+    move_name: str,
+    character_name: str,
+    frame_data: DataFrame,
+    move_name_alias_df: DataFrame,
+) -> DataFrame:
+    """Check for and handle character specific move data"""
+    data_for_move: DataFrame = DataFrame()
+
+    # check if the move name has a character specific version
+    # Most common variations of the move are j236HK or j236MK~HK
+    match character_name:
+        case "Annie":
+            divekick_first_check: re.Match[str] | None = re.search(
+                r"236[LMH]?K", move_name, flags=re.IGNORECASE
+            )
+            alias_move: str = find_move_alias(move_name_alias_df, move_name)
+            if alias_move or divekick_first_check:
+                divekick_df: DataFrame = frame_data.loc[
+                    frame_data[const.MOVE_NAME].str.contains(
+                        const.ANNIE_DIVEKICK, na=False
+                    )
+                ].reset_index(drop=True)
+                divekick_check: Series[bool] = divekick_df[
+                    const.MOVE_NAME
+                ].str.contains(move_name, flags=re.IGNORECASE, na=False)
+                if not divekick_check.any():
+                    divekick_check = divekick_df[const.ALT_NAMES].str.contains(
+                        move_name, flags=re.IGNORECASE, na=False
+                    )
+                if divekick_check.any():
+                    divekick_count_check: re.Match[str] | None = re.search(
+                        r"x\s?(\d)", move_name, flags=re.IGNORECASE
+                    )
+                    if divekick_count_check:
+                        divekick_count: int = int(divekick_count_check.group(1))
+                    else:
+                        delimiters: re.Match[str] | None = re.search(
+                            r"[~\s,]", move_name
+                        )
+                        if delimiters:
+                            divekick_count: int = (
+                                delimiters.end() - delimiters.start() + 1
+                            )
+                        else:
+                            divekick_count: int = 1
+                    global annie_divekick_count
+                    previous_divekick_count: int = annie_divekick_count
+                    annie_divekick_count += divekick_count
+                    data_for_move = divekick_df[
+                        divekick_df.index.isin(
+                            range(previous_divekick_count, annie_divekick_count)
+                        )
+                    ].reset_index(drop=True)
+                    return data_for_move
+        case _:
+            return data_for_move
+
+    return data_for_move
 
 
 def find_move_from_name_and_character(
@@ -63,16 +98,7 @@ def find_move_from_name_and_character(
     # replace regex characters with escaped versions
     move_name_escaped: str = re.sub(r"([\\^$*+?.()|{}[\]])", r"\\\1", move_name)
     if check_aliases and not move_name_alias_df.empty:
-        alias_move: str
-        alias_regex: str = rf"^{move_name_escaped}$|^{move_name_escaped}\n|\n{move_name_escaped}$|\n{move_name_escaped}\n"
-        alias_search: Series[bool] = move_name_alias_df["Value"].str.contains(
-            alias_regex, regex=True, flags=re.IGNORECASE, na=False
-        )
-        if alias_search.any():
-            # Get the key for the alias
-            alias_move = move_name_alias_df["Key"][alias_search].iloc[0]
-            logger.debug(f"Found alias for move [{move_name_escaped}]: [{alias_move}]")
-            move_name_escaped = alias_move
+        move_name_escaped = find_move_alias(move_name_alias_df, move_name_escaped)
 
     name_regex: str = rf"^{move_name_escaped}$|^{move_name_escaped}\n|\n{move_name_escaped}$|\n{move_name_escaped}\n"
     character_check: Series[bool] = frame_data[const.CHARACTER_NAME].str.contains(
@@ -94,6 +120,22 @@ def find_move_from_name_and_character(
     return move_data
 
 
+def find_move_alias(move_name_alias_df: DataFrame, move_name_escaped: str) -> str:
+    """Attempt to find an alias for a move"""
+    alias_move: str
+    alias_regex: str = rf"^{move_name_escaped}$|^{move_name_escaped}\n|\n{move_name_escaped}$|\n{move_name_escaped}\n"
+    alias_search: Series[bool] = move_name_alias_df["Value"].str.contains(
+        alias_regex, regex=True, flags=re.IGNORECASE, na=False
+    )
+    if alias_search.any():
+        # Get the key for the alias
+        alias_move = move_name_alias_df["Key"][alias_search].iloc[0]
+        logger.debug(f"Found alias for move [{move_name_escaped}]: [{alias_move}]")
+    else:
+        alias_move = ""
+    return alias_move
+
+
 def get_frame_data_for_move(
     move_name: str,
     full_framedata_df: DataFrame,
@@ -106,12 +148,16 @@ def get_frame_data_for_move(
     # check for follow-up moves such as 214HP~P or QCBLP P or 214 MP,P etc
     # regex that matches L, M or H, followed by P or K followed by "~", ",", "+" or " " followed by P or K
 
-    search_state: str | None = "repeat"
+    search_state: str | None = list(const.SEARCH_STATES.keys())[0]
     data_for_move: DataFrame = DataFrame()
     searches_performed: dict[str, bool] = const.SEARCH_STATES.copy()
 
     while search_state:
         match search_state:
+            case "character_specific":
+                data_for_move: DataFrame = character_specific_move_data(
+                    move_name, character_name, full_framedata_df, move_name_alias_df
+                )
             case "repeat":
                 repeat_moves_regex: str = r"\s?[Xx]\s?(\d+)$"
                 repeat_search: re.Match[str] | None = re.search(
@@ -147,7 +193,7 @@ def get_frame_data_for_move(
                         move_name_alias_df,
                     )
 
-                    data_for_move = concatenate_dataframes(data_to_add, data_for_move)
+                    data_for_move: DataFrame = pd.concat([data_to_add, data_for_move])
             case "alias":
                 logger.debug("Move name not found, checking aliases")
                 data_for_move = find_move_from_name_and_character(
@@ -199,25 +245,26 @@ def update_search_state(
 ) -> tuple[str, dict[str, bool]]:
     """Update the search state, setting it to the next state that has not been performed
     Update the searches performed dictionary to reflect the current search state"""
-    searches_performed[search_state] = True
+    new_searches_performed: dict[str, bool] = searches_performed.copy()
+    new_searches_performed[search_state] = True
     new_search_state = search_state
-    # Set the search state to the next state that has not been performed
     if not data_for_move.empty and search_state != "start":
         new_search_state = "found"
-        return new_search_state, searches_performed
+        return new_search_state, new_searches_performed
+    # Set the search state to the next state that has not been performed
 
-    if search_state == "no_strength":
+    elif search_state == "no_strength":
         # Reset search state to start
-        search_state = "start"
-        searches_performed = const.SEARCH_STATES.copy()
-        searches_performed["no_strength"] = True
-        return search_state, searches_performed
-
-    for state in const.SEARCH_STATES:
-        if not searches_performed[state]:
-            new_search_state: str = state
-            break
-    return new_search_state, searches_performed
+        new_search_state: str = "start"
+        new_searches_performed: dict[str, bool] = const.SEARCH_STATES.copy()
+        new_searches_performed["no_strength"] = True
+        return new_search_state, new_searches_performed
+    else:
+        for state in const.SEARCH_STATES:
+            if not new_searches_performed[state]:
+                new_search_state: str = state
+                break
+    return new_search_state, new_searches_performed
 
 
 def find_move_no_strength_specified(
@@ -371,6 +418,10 @@ def get_frame_data_for_combo(
     """Get the frame data for a combo"""
 
     # get the character name from the combo DataFrame
+
+    # Combo globals
+    global annie_divekick_count
+    annie_divekick_count = 0
 
     character_name: str = combo_df[const.CHARACTER_NAME].iloc[0]
 

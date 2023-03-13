@@ -1,3 +1,4 @@
+# %%
 """
 Calculate the damage of a combo.
 """
@@ -8,6 +9,9 @@ import math
 from typing import Any
 
 import pandas as pd
+import numpy as np  # type: ignore
+import matplotlib as mpl  # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
 from pandas import DataFrame, Series
 
 import parseCombo
@@ -18,12 +22,16 @@ from constants import logger
 # pylance: reportUnknownMemberType=false
 
 # attempt to get the data directory it is in the parent directory
-data_dir: str = os.path.join(os.path.dirname(__file__), "..", "data")
+try:
+    data_dir: str = os.path.join(os.path.dirname(__file__), "..", "data")
+except NameError:
+    data_dir: str = os.path.join(os.getcwd(), "..", "data")
 
 move_name_alias_df: DataFrame = pd.read_csv(f"{data_dir}\\moveNameAliases.csv")
 full_framedata_df: DataFrame = pd.read_csv(f"{data_dir}\\fullFrameData.csv")
 
 
+# %%
 def remove_whitespace_from_column_names(df: DataFrame) -> DataFrame:
     """Remove whitespace from column names in a dataframe."""
     df.columns = df.columns.str.replace(" ", "")
@@ -62,17 +70,19 @@ def get_damage_scaling_for_hit(hit_num: int, damage: int) -> float:  # type: ign
 
 def get_combo_damage(combo_frame_data_df: DataFrame) -> DataFrame:
     """Calculate the damage of a combo"""
-    # create a new table to store the damage and undizzy values for each hit
-    # set the type of each column
+    # add columns for the damage scaling and scaled damage
     table_undizzy_damage: DataFrame = DataFrame(
         columns=[
+            const.MOVE_NAME,
+            const.DAMAGE,
             const.HIT_NUMBER,
             const.DAMAGE_SCALING,
             const.SCALED_DAMAGE,
             const.UNDIZZY,
             const.TOTAL_DAMAGE_FOR_MOVE,
             const.TOTAL_DAMAGE_FOR_COMBO,
-        ]
+        ],
+        index=None,
     )
 
     df_newhits: DataFrame = parseCombo.parse_hits(combo_frame_data_df)
@@ -157,6 +167,43 @@ def total_damage_for_moves(damage_undizzy_table: DataFrame) -> DataFrame:
     return damage_undizzy_table
 
 
+def set_up_pandas_options() -> None:
+    """Set up pandas options."""
+    # set the max number of rows to display
+    pd.set_option("display.max_rows", 100)
+    # set the max number of columns to display
+    pd.set_option("display.max_columns", 10)
+    # set the max width of each column
+    pd.set_option("display.width", 100)
+    # set the max number of characters to display for each cell
+    pd.set_option("max_colwidth", 100)
+    # set precision for floats
+    pd.set_option("display.precision", 2)
+
+
+def process_combo(
+    combo_input_df: DataFrame, character_name: str, combo_framedata_df_input: DataFrame
+) -> DataFrame:
+    """Process the combo input and return a dataframe with the combo data."""
+    combo_framedata_df = pd.concat(
+        [
+            combo_framedata_df_input,
+            parseCombo.split_columns(combo_input_df, const.MOVE_NAME, " "),
+        ]
+    )
+    combo_framedata_df[const.CHARACTER_NAME] = character_name
+
+    combo_framedata_df = parseCombo.get_frame_data_for_combo(
+        combo_framedata_df, full_framedata_df, move_name_alias_df
+    )
+    combo_framedata_df: DataFrame = get_combo_damage(combo_framedata_df)
+
+    # remove the columns that contain only missing data
+    combo_framedata_df.dropna(axis=1, how="all", inplace=True)
+
+    return combo_framedata_df
+
+
 # %%
 
 
@@ -164,65 +211,32 @@ def skombo() -> None:
     """Temp main function.
     TODO(Aeiry): move to a UI."""
 
-    pd.options.display.precision = 2
+    set_up_pandas_options()
 
     for df in [move_name_alias_df, full_framedata_df]:
         remove_whitespace_from_column_names(df)
     csv_list: list[str] = parseCombo.get_csv_list(f"{data_dir}/combo_csvs")
 
-    output: list[Any] = []
+    combo_process_summary: list[Any] = []
 
     for csv in csv_list:
         csv_filename: str = csv.split("\\")[-1].split(".")[0]
+
         combo_input_df: DataFrame = pd.read_csv(csv)
+        """DataFrame Containing the combo input"""
 
-        expected_damage: int = parseCombo.get_first_value_from_df(
-            combo_input_df, const.EXPECTED_DAMAGE
+        # Get the expected damage from the csv
+        expected_damage: int = combo_input_df.at[0, const.EXPECTED_DAMAGE]
+        character_name: str = combo_input_df.at[0, const.CHARACTER_NAME]
+        combo_framedata_df: DataFrame = DataFrame(columns=full_framedata_df.columns)
+
+        combo_framedata_df = process_combo(
+            combo_input_df, character_name, combo_framedata_df
         )
-
-        # Set some constants
-        character_name: str = parseCombo.get_first_value_from_df(
-            combo_input_df, const.CHARACTER_NAME
-        )
-        logger.debug(
-            f"========== Starting combo for {character_name} from {csv} =========="
-        )
-
-        move_column_name: str = const.MOVE_NAME
-
-        # Create an empty dataframe to hold the combo data
-        # Uses the same columns as tempFrameData
-        combo_framedata_df: DataFrame = parseCombo.create_df_copy_columns(
-            full_framedata_df
-        )
-
-        combo_framedata_df = parseCombo.concatenate_dataframes(
-            combo_framedata_df,
-            parseCombo.split_columns(combo_input_df, move_column_name, " "),
-        )
-
-        # Set the character column in the comboDf to the character name
-        parseCombo.set_column_value(
-            combo_framedata_df, const.CHARACTER_NAME, character_name
-        )
-
-        logger.debug(f"Combo dataframe:\n{combo_framedata_df[const.MOVE_NAME]}\n")
-
-        combo_framedata_df = parseCombo.get_frame_data_for_combo(
-            combo_framedata_df, full_framedata_df, move_name_alias_df
-        )
-
-        combo_framedata_df: DataFrame = get_combo_damage(combo_framedata_df)
 
         damage: int = combo_framedata_df[const.SCALED_DAMAGE].sum()
-
-        """combo_framedata_df.plot(
-            x=const.HIT_NUMBER,
-            y=[DAMAGE, const.TOTAL_DAMAGE_FOR_COMBO],
-            kind="bar",
-            title=csv_filename,
-        ) """
-
+        # plot as a log scale
+        logger.debug(combo_framedata_df.columns)
         logger.debug(f"Combo dataframe:\n{combo_framedata_df.to_string()}\n")
 
         logger.debug(f"Calculated damage: {damage}")
@@ -232,26 +246,27 @@ def skombo() -> None:
             f"Percentage difference: {round((damage - expected_damage) / expected_damage * 100, 2)}%"
         )
 
+        summary: dict[str, Any] = {
+            "Character": character_name,
+            "Combo": csv_filename,
+            "ExpectedDamage": round(expected_damage),
+            "CalculatedDamage": round(damage),
+            "Difference": damage - round(expected_damage),
+            "PercentageDifference": f"{round((damage - expected_damage) / expected_damage * 100)}%",
+        }
         # Add the combo to the output
-        output.append(
-            {
-                "Character": character_name,
-                "Combo": csv_filename,
-                "ExpectedDamage": round(expected_damage),
-                "CalculatedDamage": round(damage),
-                "Difference": damage - round(expected_damage),
-                "PercentageDifference": f"{round((damage - expected_damage) / expected_damage * 100)}%",
-            }
-        )
+        combo_process_summary.append(summary)
 
     # Create a dataframe from the output
-    output_df: DataFrame = DataFrame(output)
+    output_df: DataFrame = DataFrame(combo_process_summary)
 
-    logger.info(f"\n{output_df}\n")
-
-    for combo, pct_diff in zip(output_df["Combo"], output_df["PercentageDifference"]):  # type: ignore
+    for combo, pct_diff in zip(  # type: ignore
+        output_df["Combo"], output_df["PercentageDifference"]  # type: ignore
+    ):
         if pct_diff != "0%":
             logger.info(f"{combo} has a {pct_diff} difference")
+
+    logger.info("Done")
 
 
 def main() -> None:

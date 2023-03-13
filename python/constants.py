@@ -54,9 +54,11 @@ IGNORED_MOVES: list[str] = [
     "otg",
     "dash",
     "66",
+    "restand",
 ]
 
 SEARCH_STATES: dict[str, bool] = {
+    "character_specific": False,
     "repeat": False,
     "start": False,
     "follow_up": False,
@@ -65,6 +67,8 @@ SEARCH_STATES: dict[str, bool] = {
     "no_strength": False,
     "not_found": False,
 }
+
+ANNIE_DIVEKICK: str = "RE ENTRY"
 
 
 def logger_setup() -> logging.Logger:
