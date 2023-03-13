@@ -26,6 +26,48 @@ def split_columns(df: DataFrame, column_name: str, seperator: str) -> DataFrame:
     return splitdf
 
 
+def handle_annie_divekick(move_name: str, frame_data: DataFrame) -> DataFrame:
+    """Logic for handling Annie's divekick moves"""
+    data_for_move: DataFrame = DataFrame()
+    divekick_move_name: str = re.sub(r"[LMH]", "", move_name)
+
+    divekick_df: DataFrame = frame_data.loc[
+        frame_data[const.MOVE_NAME].str.contains(const.ANNIE_DIVEKICK, na=False)
+    ].reset_index(drop=True)
+
+    divekick_check: Series[bool] = divekick_df[const.MOVE_NAME].str.contains(
+        divekick_move_name, flags=re.IGNORECASE, na=False
+    )
+
+    if not divekick_check.any():
+        divekick_check = divekick_df[const.ALT_NAMES].str.contains(
+            divekick_move_name, flags=re.IGNORECASE, na=False
+        )
+
+    if divekick_check.any():
+        divekick_count_check: re.Match[str] | None = re.search(
+            r"x\s?(\d)|[~\s,]", divekick_move_name, flags=re.IGNORECASE
+        )
+
+        if divekick_count_check:
+            divekick_count: int = (
+                int(divekick_count_check.group(1))
+                if divekick_count_check.group(1)
+                else (divekick_count_check.end() - divekick_count_check.start() + 1)
+            )
+        else:
+            divekick_count: int = 1
+
+        global annie_divekick_count
+        previous_divekick_count: int = annie_divekick_count
+        annie_divekick_count += divekick_count
+
+        data_for_move = divekick_df[
+            divekick_df.index.isin(range(previous_divekick_count, annie_divekick_count))
+        ].reset_index(drop=True)
+    return data_for_move
+
+
 def character_specific_move_data(
     move_name: str,
     character_name: str,
@@ -39,48 +81,23 @@ def character_specific_move_data(
     # Most common variations of the move are j236HK or j236MK~HK
     match character_name:
         case "Annie":
-            divekick_first_check: re.Match[str] | None = re.search(
-                r"236[LMH]?K", move_name, flags=re.IGNORECASE
+            divekick_first_check_regex: re.Pattern[str] = re.compile(
+                r"j?236[LMH]?K", re.IGNORECASE
             )
+
+            divekick_first_check: re.Match[str] | None = re.search(
+                divekick_first_check_regex, move_name
+            )
+
             alias_move: str = find_move_alias(move_name_alias_df, move_name)
-            if alias_move or divekick_first_check:
-                divekick_df: DataFrame = frame_data.loc[
-                    frame_data[const.MOVE_NAME].str.contains(
-                        const.ANNIE_DIVEKICK, na=False
-                    )
-                ].reset_index(drop=True)
-                divekick_check: Series[bool] = divekick_df[
-                    const.MOVE_NAME
-                ].str.contains(move_name, flags=re.IGNORECASE, na=False)
-                if not divekick_check.any():
-                    divekick_check = divekick_df[const.ALT_NAMES].str.contains(
-                        move_name, flags=re.IGNORECASE, na=False
-                    )
-                if divekick_check.any():
-                    divekick_count_check: re.Match[str] | None = re.search(
-                        r"x\s?(\d)", move_name, flags=re.IGNORECASE
-                    )
-                    if divekick_count_check:
-                        divekick_count: int = int(divekick_count_check.group(1))
-                    else:
-                        delimiters: re.Match[str] | None = re.search(
-                            r"[~\s,]", move_name
-                        )
-                        if delimiters:
-                            divekick_count: int = (
-                                delimiters.end() - delimiters.start() + 1
-                            )
-                        else:
-                            divekick_count: int = 1
-                    global annie_divekick_count
-                    previous_divekick_count: int = annie_divekick_count
-                    annie_divekick_count += divekick_count
-                    data_for_move = divekick_df[
-                        divekick_df.index.isin(
-                            range(previous_divekick_count, annie_divekick_count)
-                        )
-                    ].reset_index(drop=True)
-                    return data_for_move
+
+            if divekick_first_check:
+                if alias_move:
+                    move_name = alias_move
+                    # remove any LMH from the move name
+                data_for_move = handle_annie_divekick(move_name, frame_data)
+                return data_for_move
+
         case _:
             return data_for_move
 

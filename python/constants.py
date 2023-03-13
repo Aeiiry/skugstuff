@@ -37,8 +37,7 @@ UNDIZZY_DICT: dict[str, int] = {
     "Throws+Supers": 0,
 }
 
-LOG_LEVEL_CONSOLE: int = logging.INFO
-LOG_LEVEL_FILE: int = logging.DEBUG
+
 
 # Move names to automatically ignore
 IGNORED_MOVES: list[str] = [
@@ -70,7 +69,8 @@ SEARCH_STATES: dict[str, bool] = {
 
 ANNIE_DIVEKICK: str = "RE ENTRY"
 
-
+LOG_LEVEL_CONSOLE: int = logging.INFO
+LOG_LEVEL_FILE: int = logging.DEBUG
 def logger_setup() -> logging.Logger:
     """Set up the logger."""
 
